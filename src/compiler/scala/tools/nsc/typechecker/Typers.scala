@@ -42,12 +42,18 @@ trait Typers extends Modes with Adaptations with Tags {
 
   final val shortenImports = false
 
+
+  var indent = 0
+  val infixCache = new mutable.HashMap[(Name,List[Type]),Tree]
+
+
   def resetTyper() {
     //println("resetTyper called")
     resetContexts()
     resetImplicits()
     transformed.clear()
     clearDocComments()
+    infixCache.clear()
   }
 
   object UnTyper extends Traverser {
@@ -4229,6 +4235,7 @@ trait Typers extends Modes with Adaptations with Tags {
         println(s)
     }
 
+
     def typed1(tree: Tree, mode: Int, pt: Type): Tree = {
       def isPatternMode = inPatternMode(mode)
 
@@ -4692,6 +4699,8 @@ trait Typers extends Modes with Adaptations with Tags {
         }
       }
 
+      val infixProfile = System.getProperty("infixProfile") == "true"
+
       def typedApplyExternal(tree: Tree, fun: Select, args: List[Tree], isApply: Boolean): Tree = {
         val infixDebug = false //System.getProperty("infixVerbose") == "true"
 
@@ -4702,7 +4711,26 @@ trait Typers extends Modes with Adaptations with Tags {
         //println("fun.tpe: "+fun.tpe)
         //println("qual.tpe: "+qual.tpe)
 
-        val ealts = silent(_.typed(Ident(extname).setPos(fun.pos), forFunMode(mode), WildcardType), false, tree) match {
+        var doPrint = infixProfile
+        var pqual: Tree = qual
+        var pargs: List[Tree] = args
+        def time[A](s: String)(block: => A): A = {
+          val t0 = System.currentTimeMillis
+          indent += 1
+          try { block } finally {
+            indent -= 1
+            val t1 = System.currentTimeMillis
+            val dt = t1-t0
+            def w(x: Tree) = if (x.tpe != null) x.tpe.normalize.widen.toString else "?"
+            if (doPrint && dt > 100) println(("  "*indent) + s + ";" + extname + ";" + ((pqual::pargs).map(w)).mkString(",") + ";" + fun.pos + ";" + dt)
+            if (doPrint && dt > 1000) println("!!! " + dt + " !!!")
+          }
+        }
+
+        time("all") {
+
+
+        val ealts = time("ealts") { val ealts = silent(_.typed(Ident(extname).setPos(fun.pos), forFunMode(mode), WildcardType), false, tree) match {
           case SilentResultValue(ext) =>
             ext.symbol.alternatives.filter { s =>
               s.isMethod &&
@@ -4710,6 +4738,9 @@ trait Typers extends Modes with Adaptations with Tags {
               ((context.enclMethod.tree eq null) || s != context.enclMethod.tree.symbol) // do not make an external method accessible through the operator within its own body (HACK ?)
             }
           case _ => Nil
+        }
+        doPrint = doPrint && ealts.nonEmpty
+        ealts
         }
 
         val hasExternalMethods      = !ealts.isEmpty
@@ -4729,19 +4760,39 @@ trait Typers extends Modes with Adaptations with Tags {
           checkDead(typedQualifier(qual, mode))
 */
 
+        val specialcase = isApply && args.nonEmpty && (extname.contains("$plus") || extname.contains("$minus") || extname.contains("$times") || extname.contains("$div"))
+
         val prevRetyping = context.retyping
         context.retyping = true
         try {
-          val qual1 = if (isApply) silent(t => checkDead(t.typedQualifier(qual, forFunMode(mode))), false, tree) match {
-            case SilentResultValue(qual1) => qual1
-            case SilentTypeError(ex) =>
-              ErrorUtils.issueTypeError(ex) // fun.pos
-              return setError(tree)
-          } else qual    // <--- t0218.scala
+          var qual1 = qual
+          var args1 = args
 
-          def doDefault() = {
-            if (isApply) normalTypedApply(tree, treeCopy.Select(fun, qual1, name), args) // do default
+          time("qual1") {
+            qual1 = if (isApply && !(false && specialcase)) { silent(t => checkDead(t.typedQualifier(qual, forFunMode(mode))), false, tree) match {
+              case SilentResultValue(qual1) => qual1
+              case SilentTypeError(ex) =>
+                ErrorUtils.issueTypeError(ex) // fun.pos
+                return setError(tree)
+              }
+            } else qual    // <--- t0218.scala
+            pqual = qual1
+          }
+
+          def doDefault() = time("default") {
+            if (isApply) normalTypedApply(tree, treeCopy.Select(fun, qual1, name), args1) // do default
             else EmptyTree
+          }
+
+          pqual = qual1
+
+          if (specialcase) {
+            /*time("squal1") { 
+              qual1 = typed(qual); pqual = qual1 
+            }*/
+            time("args") { 
+              args1 = args.map(arg => typed(arg)); pargs = args1 
+            }
           }
 
           //if (!ealts.isEmpty)
@@ -4769,13 +4820,15 @@ trait Typers extends Modes with Adaptations with Tags {
               (qual1tp <:< TypeRef(proxytc.prefix, proxytc.typeSymbol, List(AnyClass.tpe)))
           //println("isReceiverActuallyLifted: " + isReceiverActuallyLifted)
 
-          val ms = if (isReceiverActuallyLifted)
-            qual1tp.typeArgs(0).nonLocalMember(name)
-          else
-            member(qual1, name)
-            //println("found member: " + ms)
 
-          val dalts = ms.alternatives.filter(_.isMethod)
+          val dalts = time("dalts") {{
+            val ms = if (isReceiverActuallyLifted)
+              qual1tp.typeArgs(0).nonLocalMember(name)
+            else
+              member(qual1, name)
+              //println("found member: " + ms)
+            ms.alternatives.filter(_.isMethod)
+          }}
           if (infixDebug) println("found declared alternatives: " + dalts + "/" + dalts.map(_.tpe))
 
           if (!dalts.isEmpty) {
@@ -4839,7 +4892,7 @@ trait Typers extends Modes with Adaptations with Tags {
               println("trying "+Apply(Ident(extname), qual1::args))
             }
 
-            val r = silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args).setPos(tree.pos), mode, /*pt*/WildcardType), true, tree) // ambiguity is an error
+            val r = time("typed1") { silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args).setPos(tree.pos), mode, /*pt*/WildcardType), true, tree)} // ambiguity is an error
             for (s <- sentinelsPlain ::: sentinelsLifted if !installed.contains(s)) { // TODO: use diff instead of contains?
               EmbeddedControlsClass.info.decls.unlink(s)
               s.setInfo(NoType)
@@ -4883,8 +4936,75 @@ trait Typers extends Modes with Adaptations with Tags {
 
           } else {
             // no declared methods but have external ones
-            silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args), mode, pt), false, tree) match { // ambiguity is an error
+
+            if (specialcase) {
+            time("styped2") { 
+              val tps = (qual1::args1).map(t => if (t.tpe != null) t.tpe.normalize.widen else null)
+              val cached = infixCache.get((extname,tps))
+
+              val t0 = System.currentTimeMillis
+              val tt = silent ({ t => 
+
+                val fun1 = cached match {
+                  case Some(fun0) => fun0.duplicate
+                  case None      => t.typed(Ident(extname).setPos(fun.pos), forFunMode(mode), WildcardType)
+                }
+
+                if (fun1 == EmptyTree) return doDefault()
+
+                t.doTypedApply(tree, fun1, qual1::args1, mode, pt) 
+              }, false, tree) 
+              val t1 = System.currentTimeMillis
+
+
+              tt match { // ambiguity is an error
               case SilentResultValue(res) =>
+                // picked external method
+                //println("picked external method: " + res)
+
+                res match { 
+                  case Apply(fun, _) if fun.toString.contains("infix") =>  // XXX could be adapt() conversion ?
+                    val fun1 = fun.duplicate //treeCopy.transform(fun)
+
+                    cached match {
+                      case Some(fun0) =>
+                        //println("old: " + fun0.symbol + " = " + fun0 + " <--- " + tps)
+                        //println("new: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
+                        //println("save " + (t1-t0))
+                      case None => 
+                        infixCache((extname,tps)) = fun1
+                        //println("caching: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
+                    }
+
+                  case _ => 
+                }
+
+                res
+              //case SilentTypeError(ex: AmbiguousTypeError) =>
+                // several external methods match --> this is an error
+                //ErrorUtils.issueTypeError(ex) // fun.pos
+                //return setError(tree)
+              case SilentTypeError(ex) => 
+                // no external method matches --> do default, look for implicits
+                //println("exception typing xxx " + ": " + ex)
+                val fun1 = EmptyTree
+
+                cached match {
+                  case Some(fun0) =>
+                    //println("old: " + fun0.symbol + " = " + fun0 + " <--- " + tps)
+                    //println("new: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
+                    //println("save " + (t1-t0))
+                  case None => 
+                    infixCache((extname,tps)) = fun1
+                    //println("caching: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
+                }
+
+                doDefault()
+            }}
+            }
+            else 
+            time("typed2") { silent(_.typed(Apply(Ident(extname).setPos(fun.pos), qual1::args1), mode, pt), false, tree) match { // ambiguity is an error
+              case SilentResultValue(res) =>              
                 // picked external method
                 //println("picked external method: " + res)
                 res
@@ -4892,10 +5012,11 @@ trait Typers extends Modes with Adaptations with Tags {
                 // no external method matches --> do default, look for implicits
                 //println("exception typing xxx " + ": " + ex)
                 doDefault()
-            }
+            }}
           }
         } finally {
           context.retyping = prevRetyping
+        }
         }
       }
 

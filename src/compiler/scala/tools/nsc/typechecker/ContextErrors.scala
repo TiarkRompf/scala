@@ -800,6 +800,10 @@ trait ContextErrors {
       if (suppressAmbiguityMsgs) suppressedMsg else tp.toString
     }
 
+    @inline final def genericSuppressedMessage(s: String): String = {
+      s + ": " + suppressedMsg
+    }
+
   }
 
   trait InferencerContextErrors extends SuppressCostlyErrorMessages {
@@ -877,7 +881,7 @@ trait ContextErrors {
 
       def NoBestMethodAlternativeError(tree: Tree, argtpes: List[Type], pt: Type, lastTry: Boolean) = {
         issueNormalTypeError(tree,
-          if (suppressAmbiguityMsgs) suppressedMsg
+          if (suppressAmbiguityMsgs) genericSuppressedMessage("NoBestMethodAlternativeError")
           else applyErrorMsg(tree, " cannot be applied to ", argtpes, pt))
         // since inferMethodAlternative modifies the state of the tree
         // we have to set the type of tree to ErrorType only in the very last
@@ -890,7 +894,7 @@ trait ContextErrors {
             firstCompeting: Symbol, argtpes: List[Type], pt: Type, lastTry: Boolean) = {
 
         if (!(argtpes exists (_.isErroneous)) && !pt.isErroneous) {
-          val (pos, msg) = if (suppressAmbiguityMsgs) (tree.pos, suppressedMsg) else {
+          val (pos, msg) = if (suppressAmbiguityMsgs) (tree.pos, genericSuppressedMessage("AmbiguousMethodAlternativeError")) else {
             val msg0 =
               "argument types " + argtpes.mkString("(", ",", ")") +
              (if (pt == WildcardType) "" else " and expected result type " + pt)

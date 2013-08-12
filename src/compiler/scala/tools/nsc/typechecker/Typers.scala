@@ -43,8 +43,8 @@ trait Typers extends Modes with Adaptations with Tags {
   final val shortenImports = false
 
 
-  var indent = 0
-  val infixCache = new mutable.HashMap[(Name,List[Type]),Tree]
+  var indent = 0 //TR XX debug -- remove
+  val infixMethodCache = new mutable.HashMap[(Name,List[Type]),Tree] // cache resolved infix methods
 
 
   def resetTyper() {
@@ -53,7 +53,7 @@ trait Typers extends Modes with Adaptations with Tags {
     resetImplicits()
     transformed.clear()
     clearDocComments()
-    infixCache.clear()
+    infixMethodCache.clear()
   }
 
   object UnTyper extends Traverser {
@@ -4700,6 +4700,7 @@ trait Typers extends Modes with Adaptations with Tags {
       }
 
       val infixProfile = System.getProperty("infixProfile") == "true"
+      val infixCache = System.getProperty("infixCache") == "true"
 
       def typedApplyExternal(tree: Tree, fun: Select, args: List[Tree], isApply: Boolean): Tree = {
         val infixDebug = false //System.getProperty("infixVerbose") == "true"
@@ -4760,7 +4761,8 @@ trait Typers extends Modes with Adaptations with Tags {
           checkDead(typedQualifier(qual, mode))
 */
 
-        val specialcase = isApply && args.nonEmpty && (extname.contains("$plus") || extname.contains("$minus") || extname.contains("$times") || extname.contains("$div"))
+        val specialcase = infixCache && isApply && args.nonEmpty && 
+          List("$plus","$minus","$times","$div").exists(extname contains _)
 
         val prevRetyping = context.retyping
         context.retyping = true
@@ -4940,7 +4942,7 @@ trait Typers extends Modes with Adaptations with Tags {
             if (specialcase) {
             time("styped2") { 
               val tps = (qual1::args1).map(t => if (t.tpe != null) t.tpe.normalize.widen else null)
-              val cached = infixCache.get((extname,tps))
+              val cached = infixMethodCache.get((extname,tps))
 
               val t0 = System.currentTimeMillis
               val tt = silent ({ t => 
@@ -4972,7 +4974,7 @@ trait Typers extends Modes with Adaptations with Tags {
                         //println("new: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
                         //println("save " + (t1-t0))
                       case None => 
-                        infixCache((extname,tps)) = fun1
+                        infixMethodCache((extname,tps)) = fun1
                         //println("caching: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
                     }
 
@@ -4995,7 +4997,7 @@ trait Typers extends Modes with Adaptations with Tags {
                     //println("new: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
                     //println("save " + (t1-t0))
                   case None => 
-                    infixCache((extname,tps)) = fun1
+                    infixMethodCache((extname,tps)) = fun1
                     //println("caching: " + fun1.symbol + " = " + fun1 + " <--- " + tps)
                 }
 

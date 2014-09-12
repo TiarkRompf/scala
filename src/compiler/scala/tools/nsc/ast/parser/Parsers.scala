@@ -1369,7 +1369,7 @@ self =>
           val thenp = expr()
           val elsep = if (in.token == ELSE) { in.nextToken(); expr() }
           else literalUnit
-          If(cond, thenp, elsep)
+          makeIfThenElse(cond, thenp, elsep)
         }
         parseIf
       case TRY =>
@@ -1404,14 +1404,14 @@ self =>
             val cond = condExpr()
             newLinesOpt()
             val body = expr()
-            makeWhile(start, cond, body)
+            makeWhileDo(start, cond, body)
           }
         }
         parseWhile
       case DO =>
         def parseDo = {
           atPos(in.skipToken()) {
-            val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
+            // val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
             val body = expr()
             if (isStatSep) in.nextToken()
             accept(WHILE)
@@ -1442,7 +1442,7 @@ self =>
       case RETURN =>
         def parseReturn =
           atPos(in.skipToken()) {
-            Return(if (isExprIntro) expr() else literalUnit)
+            makeReturn(if (isExprIntro) expr() else literalUnit)
           }
         parseReturn
       case THROW =>
@@ -1649,7 +1649,7 @@ self =>
               case _ =>
                 stripParens(t)
             }
-            Apply(sel, argumentExprs())
+            makeApply(sel, argumentExprs())
           }
           simpleExprRest(app, canApply = true)
         case USCORE =>
@@ -2494,6 +2494,8 @@ self =>
             in.nextToken()
             newmods = newmods | Flags.DEFAULTINIT
             EmptyTree
+          } else if (newmods hasFlag Flags.MUTABLE) {
+            makeNewVar(expr())
           } else {
             expr()
           }

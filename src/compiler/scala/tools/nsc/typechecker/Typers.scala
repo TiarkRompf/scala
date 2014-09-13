@@ -1738,14 +1738,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val impl1 =
         // could looking at clazz.typeOfThis before typing the template cause spurious illegal cycle errors?
         // OTOH, always typing silently and rethrowing if we're not going to reify causes other problems
-        if (opt.virtualize && clazz.isAnonymousClass && willReifyNew(clazz.typeOfThis))
+        if (settings.Yvirtualize && clazz.isAnonymousClass && willReifyNew(clazz.typeOfThis))
           newTyper(context.make(cdef.impl, clazz, newScope)).silent(_.typedTemplate(cdef.impl, parentTypes(cdef.impl)), false) match {
             case SilentResultValue(t: Template)   => t
             case _ => null // TODO: ensure clazz isn't used anywhere but in typedReifiedNew
         } else
           newTyper(context.make(cdef.impl, clazz, newScope)).typedTemplate(cdef.impl, parentTypes(cdef.impl))
 
-      if (opt.virtualize && impl1 == null) return EmptyTree
+      if (settings.Yvirtualize && impl1 == null) return EmptyTree
 
       val impl2 = finishMethodSynthesis(impl1, clazz, context)
       if (clazz.isTrait && clazz.info.parents.nonEmpty && clazz.info.firstParent.typeSymbol == AnyClass)
@@ -2359,7 +2359,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             })
         var stats2 = typedStats(stats1, context.owner)
         var expr1 = typed(block.expr, mode & ~(FUNmode | QUALmode), pt)
-        if (opt.virtualize) {
+        if (settings.Yvirtualize) {
           (stats1, expr1) match {
             case (List(ClassDef(_, _, _, impl)), tree1@Apply(Select(New(tpt), _), Nil)) if tpt.tpe != null && willReifyNew(tpt.tpe) =>
               stats2 = Nil // drop the anonymous class -- its instantiation has been virtualized anyway (that call is in expr1)
@@ -3439,7 +3439,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                   // skip formal arguments if in pattern mode (the args are subpatterns)
                   case MethodType(_, rtp) if (mode.inPatternMode) =>
                     tree setType rtp
-                  case _ if opt.virtualize && fun.symbol.isConstructor && willReifyNew(tp) =>
+                  case _ if settings.Yvirtualize && fun.symbol.isConstructor && willReifyNew(tp) =>
                     val repTycon = inferRepTycon(tree)
                     if (repTycon == NoType) tree else
                     tree setType reifiedNewType(repTycon, tp)
@@ -4028,7 +4028,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       /** Is `qual` a staged struct? (i.e., of type Rep[Struct[Rep]{decls}])?
        * Then what's the type of `name`?
        */
-      def structSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (opt.virtualize) {
+      def structSelectedMember(qual: Tree, name: Name): Option[(Type, Symbol)] = if (settings.Yvirtualize) {
         debuglog("[DNR] dynatype on struct for "+ qual +" : "+ qual.tpe +" <DOT> "+ name)
         val structTps =
           ((prefixInWith(context.owner, EmbeddedControlsClass).toList)
@@ -4128,14 +4128,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
        *  - simplest solution: have two method calls
        *
        */
-<<<<<<< HEAD
       def mkInvoke(context: Context, tree: Tree, qual: Tree, name: Name): Option[Tree] = {
         val cxTree = context.enclosingNonImportContext.tree // SI-8364
         debuglog(s"dyna.mkInvoke($cxTree, $tree, $qual, $name)")
-=======
-      def mkInvoke(cxTree: Tree, mode: Int, tree: Tree, qual: Tree, name: Name): Option[Tree] = {
-        log(s"dyna.mkInvoke($cxTree, $mode, $tree, $qual, $name)")
->>>>>>> topic-virt
         val treeInfo.Applied(treeSelection, _, _) = tree
         def isDesugaredApply = {
           val protoQual = macroExpandee(qual) orElse qual
@@ -4172,19 +4167,18 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           }
           findSelection(if (tp ne NoType) tree else cxTree) match {
             case Some((opName, treeInfo.Applied(_, targs, _))) =>
-<<<<<<< HEAD
               val fun = gen.mkTypeApply(Select(qual, opName), targs)
               if (opName == nme.updateDynamic) suppressMacroExpansion(fun) // SI-7617
               val nameStringLit = atPos(treeSelection.pos.withStart(treeSelection.pos.point).makeTransparent) {
                 Literal(Constant(name.decode))
               }
               markDynamicRewrite(atPos(qual.pos)(Apply(fun, List(nameStringLit))))
-=======
+/*//VIRT
               val sel = Select(qual, opName)
               val fun = gen.mkTypeApply(sel, if (tp ne NoType) List(TypeTree(tp)) else targs)
               val app = Apply(fun, Literal(Constant(name.decode)) :: Nil)
               atPos(qual.pos)(app)
->>>>>>> topic-virt
+*/
             case _ =>
               setError(tree)
           }
@@ -4342,7 +4336,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           }
         }
         // only under -Yvirtualize: setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
-        // if (varsym.isVariable || (phase.erasedTypes && varsym.isValue/* && !(opt.virtualize && varsym.isMethod)*/)) {
+        // if (varsym.isVariable || (phase.erasedTypes && varsym.isValue/* && !(settings.Yvirtualize && varsym.isMethod)*/)) {
         // if (varsym.isVariable ||
         // // setter-rewrite has been done above, so rule out methods here, but, wait a minute, why are we assigning to non-variables after erasure?!
         // (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
@@ -4360,7 +4354,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         else fail()
       }
 
-<<<<<<< HEAD
       def typedIf(tree: If): If = {
         val cond1 = checkDead(typedByValueExpr(tree.cond, BooleanTpe))
         // One-legged ifs don't need a lot of analysis
@@ -4397,8 +4390,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
       }
 
-      // When there's a suitable __match in scope, virtualize the pattern match
-=======
+/* //VIRT
       def typedIf(tree: If) = {
         val cond = tree.cond
         val thenp = tree.thenp
@@ -4437,9 +4429,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           treeCopy.If(tree, cond1, thenp1, elsep1) setType owntype
         }
       }
+*/
 
-      // under -Xexperimental (and not -Xoldpatmat), and when there's a suitable __match in scope, virtualize the pattern match
->>>>>>> topic-virt
+      // When there's a suitable __match in scope, virtualize the pattern match
       // otherwise, type the Match and leave it until phase `patmat` (immediately after typer)
       // empty-selector matches are transformed into synthetic PartialFunction implementations when the expected type demands it
       def typedVirtualizedMatch(tree: Match): Tree = {
@@ -4657,7 +4649,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         silent(_.doTypedApply(tree, fun, args, mode, pt)) orElse onError
       }
 
-<<<<<<< HEAD
       def normalTypedApply(tree: Tree, fun: Tree, args: List[Tree]) = {
         // TODO: replace `fun.symbol.isStable` by `treeInfo.isStableIdentifierPattern(fun)`
         val stableApplication = (fun.symbol ne null) && fun.symbol.isMethod && fun.symbol.isStable
@@ -4689,6 +4680,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           case SilentResultValue(fun1) =>
             val fun2 = if (stableApplication) stabilizeFun(fun1, mode, pt) else fun1
             if (Statistics.canEnable) Statistics.incCounter(typedApplyCount)
+
+            val unvirt = unvirtualize(tree.pos, fun.pos, fun2.symbol, fun2.tpe, args)
+            if (unvirt ne EmptyTree)
+              return unvirt
+            
             val noSecondTry = (
                  isPastTyper
               || context.inSecondTry
@@ -4725,7 +4721,15 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                 resolveClassTag(tree.pos, tagType) match {
                   case EmptyTree => MissingClassTagError(tree, tagType)
                   case tag       => atPos(tree.pos)(new ApplyToImplicitArgs(Select(tag, nme.newArray), arg :: Nil))
-=======
+                }
+            }
+          case _ => None
+        }
+      }
+
+
+//VIRT TODO
+
       def typedApplyExternal(tree: Tree, fun: Select, args: List[Tree], isApply: Boolean): Tree = {
         val infixDebug = false //System.getProperty("infixVerbose") == "true"
 
@@ -4933,10 +4937,10 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
       }
 
-
+/*
       def typedApplyParts(tree: Tree, fun: Tree, args: List[Tree]): Tree = fun match {
         case fun@Select(qual, name)
-              if opt.virtualize
+              if settings.Yvirtualize
               && ((mode & EXPRmode) != 0)
               && !isPastTyper
               && fun.symbol == NoSymbol                     // unresolved, so far
@@ -4946,7 +4950,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         case _ =>
           normalTypedApply(tree, fun, args)
       }
-
+*/
       /**
        * given `def OptiML[R](b: => R) = new Scope[OptiML, OptiMLExp, R](b)`
        *
@@ -5042,6 +5046,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         } else EmptyTree
       }
 
+/* VIRT
       def normalTypedApply(tree: Tree, fun: Tree, args: List[Tree]): Tree = {
         val stableApplication = (fun.symbol ne null) && fun.symbol.isMethod && fun.symbol.isStable
         if (args.isEmpty && stableApplication && isPatternMode) {
@@ -5130,8 +5135,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           }
         }
       }
-
-      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, funTp: Type, origArgs: List[Tree]): Tree = if (opt.virtualize) {
+*/
+      def unvirtualize(pos: Position, funpos: Position, funsym: Symbol, funTp: Type, origArgs: List[Tree]): Tree = if (settings.Yvirtualize) {
         /** TODO:
          - need to do overload resolution to be sure whether we resolve to EmbeddedControls_XXX or not
          - overload resolution is done in full by doTypedApply, but it is enough we pick the same symbol here
@@ -5187,7 +5192,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             tryTypedScope(funsym, funTp, origArgs)
         }
       } else EmptyTree
-
+/*VIRT
       def typedApply(tree: Apply) = {
         val fun = tree.fun
         val args = tree.args
@@ -5210,12 +5215,17 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                   val tag = resolveClassTag(tree.pos, tagType)
                   if (tag.isEmpty) MissingClassTagError(tree, tagType)
                   else typed(new ApplyToImplicitArgs(Select(tag, nme.newArray), args))
->>>>>>> topic-virt
                 }
             }
           case _ => None
         }
       }
+
+
+*/
+
+
+
 
       def typedApply(tree: Apply) = tree match {
         case Apply(Block(stats, expr), args) =>
@@ -5319,7 +5329,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             if (isStableContext(tree, mode, pt)) tree setType clazz.thisType else tree
         }
 
-<<<<<<< HEAD
       /* Attribute a selection where `tree` is `qual.name`.
        * `qual` is already attributed.
        */
@@ -5343,10 +5352,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       }
       def typedSelectInternal(tree: Tree, qual: Tree, name: Name): Tree = {
         def asDynamicCall = dyna.mkInvoke(context, tree, qual, name) map { t =>
-=======
-      def typedSelect(tree: Tree, qual: Tree, name: Name): Tree = {
-        def asDynamicCall = dyna.mkInvoke(context.tree, mode, tree, qual, name) map { t =>
->>>>>>> topic-virt
           dyna.wrapErrors(t, (_.typed1(t, mode, pt)))
         }
 
@@ -5354,21 +5359,18 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           // symbol not found? --> try to convert implicitly to a type that does have the required
           // member.  Added `| PATTERNmode` to allow enrichment in patterns (so we can add e.g., an
           // xml member to StringContext, which in turn has an unapply[Seq] method)
-<<<<<<< HEAD
           if (name != nme.CONSTRUCTOR && mode.inAny(EXPRmode | PATTERNmode)) {
-            val qual1 = adaptToMemberWithArgs(tree, qual, name, mode, reportAmbiguous = true, saveErrors = true)
-=======
-          if (name != nme.CONSTRUCTOR && inExprModeOr(mode, PATTERNmode)) {
-            if (opt.virtualize && (mode & FUNmode) == 0 && !isPastTyper) {
+/* //VIRT TODO
+            if (settings.Yvirtualize && (mode & FUNmode) == 0 && !isPastTyper) {
               typedApplyExternal(tree, treeCopy.Select(tree, qual, name), List(), false) match {
                 case EmptyTree =>
                 case tree1 => return tree1
               }
             }
-            val qual1 =
+*/
+            val qual1 = 
               if (member(qual, name) != NoSymbol) qual
-              else adaptToMemberWithArgs(tree, qual, name, mode, true, true)
->>>>>>> topic-virt
+              else adaptToMemberWithArgs(tree, qual, name, mode, reportAmbiguous = true, saveErrors = true)
             if ((qual1 ne qual) && !qual1.isErrorTyped)
               return typed(treeCopy.Select(tree, qual1, name), mode, pt)
           }
@@ -6184,7 +6186,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     def typedHigherKindedType(tree: Tree, mode: Mode): Tree =
       context withinTypeConstructorAllowed typed(tree)
 
-    private def willReifyNew(tp: Type): Boolean = opt.virtualize && (phase.id <= currentRun.typerPhase.id) && {
+    private def willReifyNew(tp: Type): Boolean = settings.Yvirtualize && (phase.id <= currentRun.typerPhase.id) && {
       // don't run after typers
       //  (see pos/t0586 for a scenario that makes us run during cleanup, where Struct is no longer in EmbeddedControls)
       //  also, haven't figured out yet how to deal with varargs after erasure

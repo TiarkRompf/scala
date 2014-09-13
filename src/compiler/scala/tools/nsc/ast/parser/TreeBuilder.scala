@@ -88,6 +88,7 @@ abstract class TreeBuilder {
   }
 
 //VIRT was deleted
+/*
   /** Create positioned tree representing an object creation <new parents { stats }
    *  @param npos  the position of the new
    *  @param cpos  the position of the anonymous class starting with parents
@@ -116,7 +117,7 @@ abstract class TreeBuilder {
         )
       }
     }
-
+*/
   /** A type tree corresponding to (possibly unary) intersection type */
   def makeIntersectionTypeTree(tps: List[Tree]): Tree =
     if (tps.tail.isEmpty) tps.head
@@ -162,7 +163,7 @@ abstract class TreeBuilder {
   // the factory methods below delegate to methods on builder
   private lazy val builder: TreeBuilderStrategy =
     // help out the JIT by only ever instantiating one of the two subclasses (of the *private* TreeBuilderStrategy class, so it's effectively sealed)
-    if (!opt.virtualize) new DirectTreeBuilder else new VirtualizingTreeBuilder
+    if (!settings.Yvirtualize) new DirectTreeBuilder else new VirtualizingTreeBuilder
 
   /** Create a tree representing an assignment <lhs = rhs> */
   @inline final def makeAssign(lhs: Tree, rhs: Tree): Tree = builder.makeAssign(lhs, rhs)
@@ -209,8 +210,8 @@ abstract class TreeBuilder {
     }
 
     /** Create tree representing a do-while loop */
-    def makeDoWhile(body: Tree, cond: Tree): Tree = {
-      val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
+    def makeDoWhile(lname: TermName, body: Tree, cond: Tree): Tree = {
+      //val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
       val continu = Apply(Ident(lname), Nil)
       val rhs = Block(List(body), If(cond, continu, Literal(Constant())))
       LabelDef(lname, Nil, rhs)

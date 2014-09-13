@@ -1411,7 +1411,7 @@ self =>
       case DO =>
         def parseDo = {
           atPos(in.skipToken()) {
-            // val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
+            val lname: Name = freshTermName(nme.DO_WHILE_PREFIX)
             val body = expr()
             if (isStatSep) in.nextToken()
             accept(WHILE)

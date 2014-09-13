@@ -543,17 +543,17 @@ abstract class CleanUp extends Statics with Transform with ast.TreeDSL {
         super.transform(treeCopy.ArrayValue(rest, rest.elemtpt, elem0 :: rest.elems))
 
       // embeddings: transform calls to __while and __doWhile to jumps
-      case Apply(fn, List(arg1, arg2)) if opt.virtualize =>
+      case Apply(fn, List(arg1, arg2)) if settings.Yvirtualize =>
         def append(body: Tree, last: Tree) = body match {
           case Block(stats, expr) =>
-            if (treeInfo.isPureExpr(expr)) Block(stats, last)
+            if (treeInfo.isPureExprForWarningPurposes(expr)) Block(stats, last)
             else Block(stats ::: List(expr), last)
           case _ =>
             Block(List(body), last)
         }
-        def continu(lname: Name) =
+        def continu(lname: TermName) =
           atPos(arg2.pos.focusEnd)(Apply(Ident(lname), Nil))
-        def labelDef(lname: Name, rhs: Tree) =
+        def labelDef(lname: TermName, rhs: Tree) =
           typedWithPos(tree.pos)(LabelDef(lname, List(), rhs))
         super.transform(
           if (fn.symbol == EmbeddedControls_whileDo) {

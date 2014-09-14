@@ -6,6 +6,8 @@
 package scala.tools.nsc
 package typechecker
 
+import scala.language.implicitConversions
+
 /* Utilities for generating SourceLocations and SourceContexts.
  * 
  * @author  Philipp Haller
@@ -90,7 +92,7 @@ trait SourceContextUtils {
   def sourceInfo(typer: Typer, infoContext: Context, infoTree: Tree): SearchResult = {
     def srcInfo()(implicit from: List[Symbol] = List(), to: List[Type] = List()): SearchResult = {
       implicit def wrapResult(tree: Tree): SearchResult =
-        if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to))
+        if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to), Nil)
       
       val methodName = methodNameOf(infoTree)
       val receiver =   receiverOptOf(infoTree)
@@ -125,7 +127,7 @@ trait SourceContextUtils {
 
     def srcLocation()(implicit from: List[Symbol] = List(), to: List[Type] = List()): SearchResult = {
       implicit def wrapResult(tree: Tree): SearchResult =
-        if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to))
+        if (tree == EmptyTree) SearchFailure else new SearchResult(tree, new TreeTypeSubstituter(from, to), Nil)
 
       val position = infoTree.pos.focus
       val fileName = if (position.isDefined) position.source.file.absolute.path
@@ -153,12 +155,12 @@ trait SourceContextUtils {
         else
           sourceInfoFactoryCall(typer, tree, "apply", Literal(Constant(fileName)), Literal(Constant(methodName.toString)), Literal(Constant(receiver.get.toString)), sourceInfoTree(contextInfoChain(context, tree)))
         Apply(Select(previous.tree, "update"), List(factoryCall))
-      }, previous.subst)
+      }, previous.subst, Nil)
     case TypeRef(_, SourceLocationClass, _) =>
       val position = tree.pos.focus
       new SearchResult(typer.typedPos(position) {
         sourceLocation(typer, tree).tree
-      }, previous.subst)
+      }, previous.subst, Nil)
     case _ => previous
   }
 

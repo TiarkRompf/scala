@@ -453,7 +453,7 @@ private[scala] trait DeprecatedPredef {
 // SI-7335 Parents of Predef are defined in the same compilation unit to avoid
 // cyclic reference errors compiling the standard library *without* a previously
 // compiled copy on the classpath.
-private[scala] abstract class LowPriorityImplicits {
+private[scala] abstract class LowPriorityImplicits extends EmbeddedControls {
   import mutable.WrappedArray
   import immutable.WrappedString
 

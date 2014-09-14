@@ -90,6 +90,13 @@ trait PatternMatching extends Transform
                                                              with MatchOptimizer
                                                              with MatchAnalyzer
                                                              with Solver
+/*
+VIRT
+[locker.compiler]   def inMatchMonad(tp: PatternMatching.this.global.Type): PatternMatching.this.global.Type = ???
+[locker.compiler]   protected def matchMonadSym: PatternMatching.this.global.Symbol = ???
+[locker.compiler]   def pureType(tp: PatternMatching.this.global.Type): PatternMatching.this.global.Type = ???
+*/
+
 }
 
 trait Debugging {
@@ -173,7 +180,6 @@ trait Interface extends ast.TreeDSL {
   trait MatchMonadInterface {
     val typer: Typer
     val matchOwner = typer.context.owner
-    def pureType(tp: Type): Type = tp
 
     def reportUnreachable(pos: Position) = reporter.warning(pos, "unreachable code")
     def reportMissingCases(pos: Position, counterExamples: List[String]) = {

@@ -145,7 +145,7 @@ abstract class TreeBuilder {
     def makeWhileDo(startPos: Int, cond: Tree, body: Tree): Tree
 
     /** Create tree representing a do-while loop */
-    def makeDoWhile(body: Tree, cond: Tree): Tree
+    def makeDoWhile(lname: TermName, body: Tree, cond: Tree): Tree
 
     /** Create tree representing a do-while loop */
     def makeIfThenElse(cond: Tree, thenp: Tree, elsep: Tree): Tree
@@ -172,8 +172,7 @@ abstract class TreeBuilder {
   @inline final def makeWhileDo(startPos: Int, cond: Tree, body: Tree): Tree = builder.makeWhileDo(startPos, cond, body)
 
   /** Create tree representing a do-while loop */
-  @inline final def makeDoWhile(lname: TermName, body: Tree, cond: Tree): Tree = builder.makeDoWhile(body, cond)
-  //VIRT ignoring lname
+  @inline final def makeDoWhile(lname: TermName, body: Tree, cond: Tree): Tree = builder.makeDoWhile(lname, body, cond)
 
   /** Create tree representing a do-while loop */
   @inline final def makeIfThenElse(cond: Tree, thenp: Tree, elsep: Tree): Tree = builder.makeIfThenElse(cond, thenp, elsep)
@@ -249,7 +248,7 @@ abstract class TreeBuilder {
       Apply(Ident(nme._whileDo), List(cond, body))
 
     /** Create tree representing a do-while loop */
-    def makeDoWhile(body: Tree, cond: Tree): Tree =
+    def makeDoWhile(lname: TermName, body: Tree, cond: Tree): Tree =
       Apply(Ident(nme._doWhile), List(body, cond))
 
     /** Create tree representing a do-while loop */

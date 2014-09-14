@@ -968,7 +968,7 @@ trait ContextErrors {
              (if (pt == WildcardType) "" else " and expected result type " + pt)
             ambiguousErrorMsgPos(tree.pos, pre, best, firstCompeting, msg0)
           }
-          issueAmbiguousTypeError(pre, best, firstCompeting, AmbiguousTypeError(tree, pos, msg))
+          issueAmbiguousTypeError(pre, best, firstCompeting, AmbiguousTypeError(pos, msg))
           setErrorOnLastTry(lastTry, tree)
         } else setError(tree) // do not even try further attempts because they should all fail
                               // even if this is not the last attempt (because of the SO's possibility on the horizon)

@@ -142,7 +142,13 @@ trait MatchCodeGen extends Interface {
     }
   }
 
-  trait OptimizedCodegen extends CodegenCore with TypedSubstitution with MatchMonadInterface {
+  trait OptimizedMatchMonadInterface extends MatchMonadInterface {
+    override def inMatchMonad(tp: Type): Type = optionType(tp)
+    override def pureType(tp: Type): Type     = tp
+    override protected def matchMonadSym      = OptionClass
+  }
+
+  trait OptimizedCodegen extends CodegenCore with TypedSubstitution with OptimizedMatchMonadInterface {
     override def codegen: AbsCodegen = optimizedCodegen
 
     // when we know we're targetting Option, do some inlining the optimizer won't do

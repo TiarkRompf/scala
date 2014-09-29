@@ -759,7 +759,23 @@ TODO:
 
     <path id="quick.partest-extras.build.path">
       <path refid="asm.classpath"/>
-      <path refid="partest.classpath"/>
+      <!-- 
+        TR VIRT: changed from
+        <path refid="partest.classpath"/>
+
+        partest.classpath looks like this:
+
+         ~/.m2/repository/org/scala-lang/modules/scala-partest_2.11/1.0.0/scala-partest_2.11-1.0.0.~/
+         ~/.m2/repository/org/scala-lang/scala-library/2.11.0/scala-library-2.11.0.jar
+         ~/.m2/repository/org/apache/ant/ant/1.8.4/ant-1.8.4.jar
+         ~/.m2/repository/org/apache/ant/ant-launcher/1.8.4/ant-launcher-1.8.4.jar
+         ~/.m2/repository/com/googlecode/java-diff-utils/diffutils/1.3.0/diffutils-1.3.0.jar
+         ~/.m2/repository/org/scala-sbt/test-interface/1.0/test-interface-1.0.jar
+
+        in other words, it doesn't include the freshly build library.
+        partest.compilation.path seems to do the right thing
+      -->
+      <path refid="partest.compilation.path"/>
       <path refid="quick.compiler.build.path"/>
       <pathelement location="${build-quick.dir}/classes/repl"/>
       <!-- for the java dependency: Profiler.java -->

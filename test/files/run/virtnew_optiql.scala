@@ -24,7 +24,7 @@ object Test extends EmbeddedControls with App {
   }
 
   // to represent the self/this reference in a reified object creation
-  case class Self[T] extends Rep[T]
+  case class Self[T]() extends Rep[T]
 
   // this method is called by the virtualizing compiler
   def __new[T](args: (String, Boolean, Rep[T] => Rep[_])*): Rep[T] = {

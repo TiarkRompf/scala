@@ -1,2 +1,4 @@
+warning: there were two deprecation warnings; re-run with -deprecation for details
+warning: there were three feature warnings; re-run with -feature for details
 Self() DOT xx = Const(23)
 Const(23)

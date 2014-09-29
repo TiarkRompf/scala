@@ -1,3 +1,4 @@
+warning: there were two feature warnings; re-run with -feature for details
 select field
 apply method(blah)
 select arr

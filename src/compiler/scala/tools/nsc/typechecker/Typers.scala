@@ -4943,11 +4943,10 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
       }
 
-/*
       def typedApplyParts(tree: Tree, fun: Tree, args: List[Tree]): Tree = fun match {
         case fun@Select(qual, name)
               if settings.Yvirtualize
-              && ((mode & EXPRmode) != 0)
+              && mode.inExprMode
               && !isPastTyper
               && fun.symbol == NoSymbol                     // unresolved, so far
               && !qual.isInstanceOf[New]                    // TODO: applyExternal does not intercept constructor calls, right?
@@ -4956,7 +4955,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         case _ =>
           normalTypedApply(tree, fun, args)
       }
-*/
+
       /**
        * given `def OptiML[R](b: => R) = new Scope[OptiML, OptiMLExp, R](b)`
        *
@@ -5235,7 +5234,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         case Apply(Block(stats, expr), args) =>
           typed1(atPos(tree.pos)(Block(stats, Apply(expr, args) setPos tree.pos.makeTransparent)), mode, pt)
         case Apply(fun, args) =>
-          normalTypedApply(tree, fun, args) match {
+          typedApplyParts(tree, fun, args) match {
             case ArrayInstantiation(tree1)                                           => typed(tree1, mode, pt)
             case Apply(Select(fun, nme.apply), _) if treeInfo.isSuperConstrCall(fun) => TooManyArgumentListsForConstructor(tree) //SI-5696
             case tree1                                                               => tree1
@@ -5364,14 +5363,12 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           // member.  Added `| PATTERNmode` to allow enrichment in patterns (so we can add e.g., an
           // xml member to StringContext, which in turn has an unapply[Seq] method)
           if (name != nme.CONSTRUCTOR && mode.inAny(EXPRmode | PATTERNmode)) {
-/* //VIRT TODO
-            if (settings.Yvirtualize && (mode & FUNmode) == 0 && !isPastTyper) {
+            if (settings.Yvirtualize && !mode.inFunMode && !isPastTyper) {
               typedApplyExternal(tree, treeCopy.Select(tree, qual, name), List(), false) match {
                 case EmptyTree =>
                 case tree1 => return tree1
               }
             }
-*/
             val qual1 = 
               if (member(qual, name) != NoSymbol) qual
               else adaptToMemberWithArgs(tree, qual, name, mode, reportAmbiguous = true, saveErrors = true)

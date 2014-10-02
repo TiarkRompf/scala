@@ -4168,18 +4168,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           }
           findSelection(if (tp ne NoType) tree else cxTree) match {
             case Some((opName, treeInfo.Applied(_, targs, _))) =>
-              val fun = gen.mkTypeApply(Select(qual, opName), targs)
+              val sel = Select(qual, opName)
+              val fun = gen.mkTypeApply(sel, if (tp ne NoType) List(TypeTree(tp)) else targs)
               if (opName == nme.updateDynamic) suppressMacroExpansion(fun) // SI-7617
               val nameStringLit = atPos(treeSelection.pos.withStart(treeSelection.pos.point).makeTransparent) {
                 Literal(Constant(name.decode))
               }
-              markDynamicRewrite(atPos(qual.pos)(Apply(fun, List(nameStringLit))))
-/*//VIRT
-              val sel = Select(qual, opName)
-              val fun = gen.mkTypeApply(sel, if (tp ne NoType) List(TypeTree(tp)) else targs)
-              val app = Apply(fun, Literal(Constant(name.decode)) :: Nil)
-              atPos(qual.pos)(app)
-*/
+              val app = Apply(fun, List(nameStringLit))
+              markDynamicRewrite(atPos(qual.pos)(app))
             case _ =>
               setError(tree)
           }
@@ -4697,10 +4693,18 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               case Select(_, _) => !noSecondTry && mode.inExprMode
               case _            => false
             }
-            if (isFirstTry)
+            val res0 = if (isFirstTry)
               tryTypedApply(fun2, args)
             else
               doTypedApply(tree, fun2, args, mode, pt)
+            res0 match { // TODO: is this ok?
+              case treeInfo.DynamicApplication(_, _) if isImplicitMethodType(res0.tpe) && mode.inNone(TAPPmode) =>
+                // adapt in EXPRmode so that implicits will be resolved now,
+                // before any chained apply/update's are called (to support def selectDynamic[T: Manifest])
+                // see test/files/run/applydynamic_row.scala
+                adapt(res0, EXPRmode, pt)
+              case _ => res0
+            }
           case err: SilentTypeError =>
             onError({
               err.reportableErrors foreach issue

@@ -1,9 +1,9 @@
 object Test extends App {
   trait Rep[+x] {
-    // def __newVar[T](x: T): Rep[T] = error("")
-    def selectDynamic[T](n: String): Rep[T] = error("")
-    def applyDynamic[T](n: String): Rep[T] = error("")
-    def updateDynamic[T](n: String)(v: Rep[Any]): Rep[Unit] = error("")
+    // def __newVar[T](x: T): Rep[T] = ???
+    def selectDynamic[T](n: String): Rep[T] = ???
+    def applyDynamic[T](n: String): Rep[T] = ???
+    def updateDynamic[T](n: String)(v: Rep[Any]): Rep[Unit] = ???
   }
 
   // representation of a statically-known constant

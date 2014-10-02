@@ -6269,8 +6269,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val funSym = origClass.owner.newValue(nme.ANON_FUN_NAME, templ.pos).setFlag(SYNTHETIC).setInfo(NoType)
         val selfSym = funSym.newValueParameter(selfName, origDef.pos) setInfo repStructTp
         // println("selfSym "+ selfSym)
-        val selfRef = Ident(selfName) setSymbol selfSym setType repStructTp
-        def selNameOnSelf(n: Name): Tree = Select(selfRef, n)
+        def selfRef = Ident(selfName) setSymbol selfSym setType repStructTp
+        def selNameOnSelf(n: Name): Tree = atPos(origDef.pos)(Select(selfRef, n))
         def selOnSelf(d: TermSymbol): Tree = selNameOnSelf(nme.getterName(d.name))
 
         // println("def: "+ origDef)

@@ -9,7 +9,7 @@ object Test extends EmbeddedControls with App {
   // a typical example of such a representation is an expression tree that computes something of type T
   trait Rep[x] {
     // defined as a member of Rep for convenience, can also be pimped on when Rep is an abstract type
-    def selectDynamic[T](n: String): Rep[T] = error("")
+    def selectDynamic[T](n: String): Rep[T] = ???
   }
 
   // representation of a statically-known constant

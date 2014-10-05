@@ -1,2 +1,3 @@
+warning: there were 5 feature warnings; re-run with -feature for details
 Self() DOT customerName = Const(me)
 Self() DOT customerName = Const(that other guy)

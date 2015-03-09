@@ -5047,6 +5047,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             val List(expr) = origArgs
             typedReturnParts(tree, expr)
           case EmbeddedControls_assign =>
+            removeFunUndets()
             val List(lhs, rhs) = origArgs
             typedAssign(lhs, rhs)
           case EmbeddedControls_equal =>

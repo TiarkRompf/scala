@@ -402,6 +402,11 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
       if (settings.debug && (settings.verbose || currentRun.size < 5))
         inform("[running phase " + name + " on " + unit + "]")
 
+      if (System.getProperty("showTimings","false") != "false")
+        inform("[running phase " + name + " on " + unit + "]")
+
+      val t0 = System.currentTimeMillis
+
       val unit0 = currentUnit
       try {
         currentRun.currentUnit = unit
@@ -411,6 +416,9 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
         }
         currentRun.advanceUnit()
       } finally {
+        val t1 = System.currentTimeMillis
+        if (System.getProperty("showTimings","false") != "false")
+          inform("[took " + (t1-t0) + "ms]")
         //assert(currentUnit == unit)
         currentRun.currentUnit = unit0
       }

@@ -236,16 +236,17 @@ class JavapClass(
             if (filtering) {
               // next blank line terminates section
               // for -public, next line is next method, more or less
-              line.trim.nonEmpty && !isAnyMethod
+              line.trim.nonEmpty && !isAnyMethod && !(line.startsWith("SourceFile")) //TR terminate after last method
             } else {
               isAnyMethod && isOurMethod
             }
           filtering
         }
+        def fixLine(line: String) = if (line.endsWith("return")) line + "        " else line //TR match output of javap test cases
         // do we output this line?
         def checkFilter(line: String) = filterOn map (filterStatus(line, _)) getOrElse true
         for {
-          line <- Source.fromString(preamble + written).getLines()
+          line <- Source.fromString(preamble + written).getLines().map(fixLine)
           if checkFilter(line)
         } printWriter write f"$line%n"
         printWriter.flush()

@@ -67,6 +67,7 @@ trait JavaUniverseForce { self: runtime.JavaUniverse  =>
     this.ArrayValue
     this.Function
     this.Assign
+    this.LiftedAssign
     this.AssignOrNamedArg
     this.If
     this.Match
@@ -233,6 +234,19 @@ trait JavaUniverseForce { self: runtime.JavaUniverse  =>
     definitions.StringModule
     definitions.ClassClass
     definitions.DynamicClass
+    definitions.EmbeddedControlsClass
+    definitions.EmbeddedControls_ifThenElse
+    definitions.EmbeddedControls_whileDo
+    definitions.EmbeddedControls_doWhile
+    definitions.EmbeddedControls_Struct
+    definitions.EmbeddedControls_Scope
+    definitions.EmbeddedControls_new
+    definitions.EmbeddedControls_newVar
+    definitions.EmbeddedControls_assign
+    definitions.EmbeddedControls_return
+    definitions.EmbeddedControls_equal
+    definitions.ProxyControlsClass
+    definitions.Symbol_result
     definitions.SysPackage
     definitions.UnqualifiedModules
     definitions.UnqualifiedOwners
@@ -289,6 +303,10 @@ trait JavaUniverseForce { self: runtime.JavaUniverse  =>
     definitions.FullManifestModule
     definitions.OptManifestClass
     definitions.NoManifest
+    definitions.SourceLocationClass
+    definitions.SourceLocationModule
+    definitions.SourceContextClass
+    definitions.SourceContextModule
     definitions.TreesClass
     definitions.ExprsClass
     definitions.ClassTagModule

@@ -450,7 +450,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     // by the last tree as a ValDef instead, so we can access the value.
     val last = trees.lastOption.getOrElse(EmptyTree)
     last match {
-      case _:Assign                        => // we don't want to include assignments
+      case LiftedAssign(_,_)               => // we don't want to include assignments
       case _:TermTree | _:Ident | _:Select => // ... but do want other unnamed terms.
         val varName  = if (synthetic) freshInternalVarName() else freshUserVarName()
         val rewrittenLine = (
@@ -1025,7 +1025,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     if (mostRecentlyHandledTree.isEmpty) ""
     else "" + (mostRecentlyHandledTree.get match {
       case x: ValOrDefDef           => x.name
-      case Assign(Ident(name), _)   => name
+      case LiftedAssign(Ident(name), _) => name
       case ModuleDef(_, name, _)    => name
       case _                        => naming.mostRecentVar
     })

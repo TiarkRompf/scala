@@ -45,7 +45,9 @@ abstract class Quasiquotes extends Parsers
   def expandQuasiquote = {
     debug(s"macro application:\n${c.macroApplication}\n")
     debug(s"code to parse:\n$code\n")
-    val tree = parse(code)
+    val save = settings.Yvirtualize.value // VIRT: do not virtualize quasiquotes
+    settings.Yvirtualize.value = false
+    val tree = try parse(code) finally settings.Yvirtualize.value = save
     debug(s"parsed:\n${showRaw(tree)}\n$tree\n")
     val reified = reify(tree)
     def sreified =

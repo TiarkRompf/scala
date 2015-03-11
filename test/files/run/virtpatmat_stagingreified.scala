@@ -4,7 +4,7 @@ trait Spec {
   abstract class Matcher {
     def zero: M[Nothing]                                            
     def one[T](x: Exp[T]): M[T]                                     
-    def guard[T](cond: Exp[Boolean], then: => Exp[T]): M[T]         
+    def guard[T](cond: Exp[Boolean], thenp: => Exp[T]): M[T]         
     def runOrElse[T, U](in: Exp[T])(matcher: Exp[T] => M[U]): Exp[U]
   }
   val __match: Matcher
@@ -15,12 +15,12 @@ trait Spec {
   implicit def proxyMaybe[A](m: M[A]): Maybe[A]
   implicit def unit[T](e: T): Exp[T]
 
-  def __unapply[T](kind: String, x: Exp[_]): M[T]
+  def __unapply[T](kind: String, x: Exp[Any]): M[T]
   object XNil {
-    def unapply(x: Exp[_]): M[Unit] = __unapply("Nil", x)
+    def unapply(x: Exp[Any]): M[Unit] = __unapply("Nil", x)
   }
   object XCons {
-    def unapply(x: Exp[_]): M[(Any, Any)] = __unapply("Cons", x)
+    def unapply(x: Exp[Any]): M[(Any, Any)] = __unapply("Cons", x)
   }
 
   def infix__1[A, B](t: Exp[(A, B)]): Exp[A]
@@ -35,13 +35,13 @@ trait Spec {
   def test3 = List(1, 2, 3) match { case _ => "list" }
   // ResultOrMatchError(One(list))
 
-  def test4 = List(1, 2, 3) match { case XNil() => "nil"; case _ => "other" }
+  def test4 = List(1, 2, 3) match { case XNil(_) => "nil"; case _ => "other" }
   // ResultOrMatchError(OrElse(FlatMap(Unapply(Nil,List(1, 2, 3)),x2,One(nil)),One(other)))
 
-  def test5 = List(1, 2, 3) match { case XNil() => "nil"; case XCons(_, _) => "other" }
+  def test5 = List(1, 2, 3) match { case XNil(_) => "nil"; case XCons(_, _) => "other" }
   // ResultOrMatchError(OrElse(FlatMap(Unapply(Nil,List(1, 2, 3)),x3,One(nil)),FlatMap(Unapply(Cons,List(1, 2, 3)),x4,One(other))))
 
-  def test6 = List(1, 2, 3) match { case XNil() => "default"; case XCons(hd, tl) => hd }
+  def test6 = List(1, 2, 3) match { case XNil(_) => "default"; case XCons(hd, tl) => hd }
   // ResultOrMatchError(OrElse(FlatMap(Unapply(Nil,List(1, 2, 3)),x5,One(default)),FlatMap(Unapply(Cons,List(1, 2, 3)),x6,One(x6._1))))
 }
 
@@ -84,7 +84,7 @@ trait ImplMatcher extends Spec {
   object __match extends Matcher {
     def zero: M[Nothing]                                              = Zero
     def one[T](x: Exp[T]): M[T]                                       = TOne(x)
-    def guard[T](cond: Exp[Boolean], then: => Exp[T]): M[T]           = TIfThenElse(cond, one(then), zero)
+    def guard[T](cond: Exp[Boolean], thenp: => Exp[T]): M[T]          = TIfThenElse(cond, one(thenp), zero)
     def runOrElse[T, U](in: Exp[T])(matcher: Exp[T] => M[U]): Exp[U]  = TResultOrMatchError(matcher(in))
   }
 
@@ -95,7 +95,7 @@ trait ImplMatcher extends Spec {
   }
   implicit def unit[T](e: T): Exp[T] = Const(e)
 
-  def __unapply[T](kind: String, x: Exp[_]): M[T] = TUnapply(kind, x)
+  def __unapply[T](kind: String, x: Exp[Any]): M[T] = TUnapply(kind, x)
 
   def infix__1[A, B](t: Exp[(A, B)]): Exp[A] = TTupleSelect(1, t)
   def infix__2[A, B](t: Exp[(A, B)]): Exp[B] = TTupleSelect(2, t)

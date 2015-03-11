@@ -1,1 +1,7 @@
-__doWhile(1, true)
+doWhile$1(){
+  1;
+  if (true)
+    doWhile$1()
+  else
+    ()
+}

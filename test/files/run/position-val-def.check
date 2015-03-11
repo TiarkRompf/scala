@@ -2,7 +2,7 @@ val x = 0
 [0:9]val x = [8:9]0
 
 var x = 0
-[0:9]var x = [8:9]<8:9>__newVar([8:9]0)
+[0:9]var x = [8:9]0
 
 val x, y = 0
 [NoPosition]{
@@ -13,8 +13,8 @@ val x, y = 0
 
 var x, y = 0
 [NoPosition]{
-  [0:5]var x = [11][11]__newVar([11]0);
-  [7:12]var y = [11:12]<11:12>__newVar([11:12]0);
+  [0:5]var x = [11]0;
+  [7:12]var y = [11:12]0;
   [NoPosition]()
 }
 

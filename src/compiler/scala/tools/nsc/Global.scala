@@ -1691,7 +1691,8 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
       if (!pclazz.isRoot) resetPackageClass(pclazz.owner)
     }
 
-//VIRT: was deleted
+//VIRT: not used anymore, EmbeddedControls now needs to reside in Predef
+/*
     /**
      * Re-orders the source files to
      *  1. This Space Intentionally Left Blank
@@ -1730,6 +1731,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
       }
       files sortBy rank
     }
+*/    
   } // class Run
 
   def printAllUnits() {

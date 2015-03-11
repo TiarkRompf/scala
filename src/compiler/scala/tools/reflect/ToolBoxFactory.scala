@@ -332,7 +332,6 @@ abstract class ToolBoxFactory[U <: JavaUniverse](val u: U) { factorySelf =>
             val errorFn: String => Unit = msg => frontEnd.log(scala.reflect.internal.util.NoPosition, msg, frontEnd.ERROR)
             val command = new CompilerCommand(arguments.toList, errorFn)
             command.settings.outputDirs setSingleOutput virtualDirectory
-            command.settings.Yvirtualize.value = false // VIRT: do not virtualize toolbox compilers
             val instance = new ToolBoxGlobal(command.settings, frontEndToReporter(frontEnd, command.settings))
             if (frontEnd.hasErrors) {
               throw ToolBoxError(
@@ -415,7 +414,10 @@ abstract class ToolBoxFactory[U <: JavaUniverse](val u: U) { factorySelf =>
     def parse(code: String): u.Tree = withCompilerApi { compilerApi =>
       import compilerApi._
       if (compiler.settings.verbose) println("parsing "+code)
-      val ctree: compiler.Tree = compiler.parse(code)
+      val save = compiler.settings.Yvirtualize
+      compiler.settings.Yvirtualize.value = false
+      val ctree: compiler.Tree = try compiler.parse(code) 
+                                 finally compiler.settings.Yvirtualize.value = save
       val utree = exporter.importTree(ctree)
       utree
     }

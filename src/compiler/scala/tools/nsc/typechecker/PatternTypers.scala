@@ -89,6 +89,7 @@ trait PatternTypers {
         || (isEmptyType <:< BooleanTpe)
         || member.isMacro
         || member.isOverloaded // the whole overloading situation is over the rails
+        || settings.Xexperimental // (VIRT) we may not have isEmpty members (e.g. Rep[Option[A]])
       )
 
       // Dueling test cases: pos/overloaded-unapply.scala, run/case-class-23.scala, pos/t5022.scala

@@ -857,10 +857,15 @@ trait Definitions extends api.StandardDefinitions {
     // SI-8128 Still using the type argument of the base type at Seq/Option if this is an old-style (2.10 compatible)
     //         extractor to limit exposure to regressions like the reported problem with existentials.
     //         TODO fix the existential problem in the general case, see test/pending/pos/t8128.scala
-    private def typeArgOfBaseTypeOr(tp: Type, baseClass: Symbol)(or: => Type): Type = (tp baseType baseClass).typeArgs match {
+    private def typeArgOfBaseTypeOr(tp: Type, baseClass: Symbol)(or: => Type): Type = baseTypeOf(tp,baseClass).typeArgs match {
       case x :: Nil => x
       case _        => or
     }
+    // (VIRT) For virtualized pattern matching, the result type of unapply might be List[A], Random[A],
+    // or a more complicated type such as Rep[Option[A]]. None of these types have a get method, so we 
+    // follow the previous (2.10) assumption that all such types have single-argument constructors. 
+    // Thus we need one level of indirection for nested types, e.g. M[A] = Rep[Option[A]].
+    private def baseTypeOf(tp: Type, baseClass: Symbol) = if (settings.Xexperimental) tp else (tp baseType baseClass)
 
     // Can't only check for _1 thanks to pos/t796.
     def hasSelectors(tp: Type) = (

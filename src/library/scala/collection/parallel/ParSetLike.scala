@@ -6,11 +6,8 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala
 package collection.parallel
-
-
 
 import scala.collection.SetLike
 import scala.collection.GenSetLike
@@ -23,6 +20,8 @@ import scala.collection.Set
  *  $sideeffects
  *
  *  @tparam T    the element type of the set
+ *  @define Coll `ParSet`
+ *  @define coll parallel set
  *
  *  @author Aleksandar Prokopec
  *  @since 2.9
@@ -45,26 +44,4 @@ extends GenSetLike[T, Repr]
   def diff(that: GenSet[T]): Repr = sequentially {
     _ diff that
   }
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

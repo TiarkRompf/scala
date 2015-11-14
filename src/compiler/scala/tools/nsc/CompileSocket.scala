@@ -24,7 +24,7 @@ trait HasCompileSocket {
 
     sock.applyReaderAndWriter { (in, out) =>
       out println (compileSocket getPassword sock.getPort())
-      out println (args mkString "\0")
+      out println (args mkString "\u0000")
 
       def loop(): Boolean = in.readLine() match {
         case null => noErrors
@@ -32,7 +32,8 @@ trait HasCompileSocket {
           if (isErrorMessage(line))
             noErrors = false
 
-          compileSocket.echo(line)
+          // be consistent with scalac: everything goes to stderr
+          compileSocket.warn(line)
           loop()
       }
       try loop()
@@ -45,6 +46,9 @@ trait HasCompileSocket {
 class CompileSocket extends CompileOutputCommon {
   protected lazy val compileClient: StandardCompileClient = CompileClient
   def verbose = compileClient.verbose
+  
+  /* Fixes the port where to start the server, 0 yields some free port */
+  var fixPort = 0
 
   /** The prefix of the port identification file, which is followed
    *  by the port number.
@@ -63,7 +67,7 @@ class CompileSocket extends CompileOutputCommon {
 
   /** The class name of the scala compile server */
   protected val serverClass     = "scala.tools.nsc.CompileServer"
-  protected def serverClassArgs = if (verbose) List("-v") else Nil  // debug
+  protected def serverClassArgs = (if (verbose) List("-v") else Nil) ::: (if (fixPort > 0) List("-p", fixPort.toString) else Nil) 
 
   /** A temporary directory to use */
   val tmpDir = {
@@ -103,9 +107,14 @@ class CompileSocket extends CompileOutputCommon {
   def portFile(port: Int) = portsDir / File(port.toString)
 
   /** Poll for a server port number; return -1 if none exists yet */
-  private def pollPort(): Int = portsDir.list.toList match {
+  private def pollPort(): Int = if (fixPort > 0) {
+  	if (portsDir.list.toList.exists(_.name == fixPort.toString)) fixPort else -1
+  } else portsDir.list.toList match {
     case Nil      => -1
-    case x :: xs  => try x.name.toInt finally xs foreach (_.delete())
+    case x :: xs  => try x.name.toInt catch {
+    	case e: Exception => x.delete()
+    	throw e
+    }
   }
 
   /** Get the port number to which a scala compile server is connected;
@@ -151,7 +160,8 @@ class CompileSocket extends CompileOutputCommon {
     * create a new daemon if necessary.  Returns None if the connection
     * cannot be established.
     */
-  def getOrCreateSocket(vmArgs: String, create: Boolean = true): Option[Socket] = {
+  def getOrCreateSocket(vmArgs: String, create: Boolean = true, fixedPort: Int = 0): Option[Socket] = {
+    fixPort = fixedPort
     val maxMillis = 10L * 1000   // try for 10 seconds
     val retryDelay = 50L
     val maxAttempts = (maxMillis / retryDelay).toInt
@@ -185,14 +195,17 @@ class CompileSocket extends CompileOutputCommon {
     try   { Some(x.toInt) }
     catch { case _: NumberFormatException => None }
 
-  def getSocket(serverAdr: String): Socket = (
-    for ((name, portStr) <- splitWhere(serverAdr, _ == ':', doDropIndex = true) ; port <- parseInt(portStr)) yield
+  def getSocket(serverAdr: String): Option[Socket] = (
+    for ((name, portStr) <- splitWhere(serverAdr, _ == ':', doDropIndex = true) ; port <- parseInt(portStr)) yield    	
       getSocket(name, port)
   ) getOrElse fatal("Malformed server address: %s; exiting" format serverAdr)
 
-  def getSocket(hostName: String, port: Int): Socket =
-    Socket(hostName, port).opt getOrElse fatal("Unable to establish connection to server %s:%d; exiting".format(hostName, port))
-
+  def getSocket(hostName: String, port: Int): Option[Socket] = {
+    val sock = Socket(hostName, port).opt
+    if (sock.isEmpty) warn("Unable to establish connection to server %s:%d".format(hostName, port))
+    sock
+  }
+  
   def getPassword(port: Int): String = {
     val ff  = portFile(port)
     val f   = ff.bufferedReader()

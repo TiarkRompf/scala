@@ -182,6 +182,7 @@ object Duration {
     def compare(other: Duration) = if (other eq this) 0 else 1
     def unary_- : Duration = this
     def toUnit(unit: TimeUnit): Double = Double.NaN
+    private def readResolve(): AnyRef = Undefined      // Instructs deserialization to use this same instance
   }
 
   sealed abstract class Infinite extends Duration {
@@ -221,7 +222,7 @@ object Duration {
     final def toMinutes: Long = fail("toMinutes")
     final def toHours: Long   = fail("toHours")
     final def toDays: Long    = fail("toDays")
-	
+
     final def toCoarsest: Duration = this
   }
 
@@ -230,7 +231,7 @@ object Duration {
    * but itself. This value closely corresponds to Double.PositiveInfinity,
    * matching its semantics in arithmetic operations.
    */
-  val Inf: Infinite = new Infinite {
+  val Inf: Infinite = new Infinite  {
     override def toString = "Duration.Inf"
     def compare(other: Duration) = other match {
       case x if x eq Undefined => -1 // Undefined != Undefined
@@ -239,6 +240,7 @@ object Duration {
     }
     def unary_- : Duration = MinusInf
     def toUnit(unit: TimeUnit): Double = Double.PositiveInfinity
+    private def readResolve(): AnyRef = Inf            // Instructs deserialization to use this same instance
   }
 
   /**
@@ -251,6 +253,7 @@ object Duration {
     def compare(other: Duration) = if (other eq this) 0 else -1
     def unary_- : Duration = Inf
     def toUnit(unit: TimeUnit): Double = Double.NegativeInfinity
+    private def readResolve(): AnyRef = MinusInf    // Instructs deserialization to use this same instance
   }
 
   // Java Factories
@@ -532,7 +535,7 @@ sealed abstract class Duration extends Serializable with Ordered[Duration] {
    * Duration(48, HOURS).toCoarsest // Duration(2, DAYS)
    * Duration(5, SECONDS).toCoarsest // Duration(5, SECONDS)
    * }}}
-   */  
+   */
   def toCoarsest: Duration
 }
 
@@ -621,7 +624,7 @@ final class FiniteDuration(val length: Long, val unit: TimeUnit) extends Duratio
   }
   def -(other: Duration) = other match {
     case x: FiniteDuration => add(-x.length, x.unit)
-    case _                 => other
+    case _                 => -other
   }
 
   def *(factor: Double) =

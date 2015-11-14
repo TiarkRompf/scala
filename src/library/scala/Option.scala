@@ -94,6 +94,7 @@ object Option {
  *  @define bfinfo an implicit value of class `CanBuildFrom` which determines the result class `That` from the current
  *    representation type `Repr` and the new element type `B`.
  */
+@SerialVersionUID(-114498752079829388L) // value computed by serialver for 2.11.2, annotation added in 2.11.4
 sealed abstract class Option[+A] extends Product with Serializable {
   self =>
 
@@ -107,7 +108,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
 
   /** Returns the option's value.
    *  @note The option must be nonEmpty.
-   *  @throws Predef.NoSuchElementException if the option is empty.
+   *  @throws java.util.NoSuchElementException if the option is empty.
    */
   def get: A
 
@@ -124,8 +125,8 @@ sealed abstract class Option[+A] extends Product with Serializable {
    * Although the use of null is discouraged, code written to use
    * $option must often interface with code that expects and returns nulls.
    * @example {{{
-   * val initalText: Option[String] = getInitialText
-   * val textField = new JComponent(initalText.orNull,20)
+   * val initialText: Option[String] = getInitialText
+   * val textField = new JComponent(initialText.orNull,20)
    * }}}
    */
   @inline final def orNull[A1 >: A](implicit ev: Null <:< A1): A1 = this getOrElse ev(null)
@@ -141,7 +142,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *  @see flatMap
    *  @see foreach
    */
-  @inline final def map[B](f: A => B): Option[B] =
+  @inline final def map[B](@local f: A => B): Option[B] =
     if (isEmpty) None else Some(f(this.get))
 
   /** Returns the result of applying $f to this $option's
@@ -153,7 +154,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *  @param  ifEmpty the expression to evaluate if empty.
    *  @param  f       the function to apply if nonempty.
    */
-  @inline final def fold[B](ifEmpty: => B)(f: A => B): B =
+  @inline final def fold[B](ifEmpty: => B)(@local f: A => B): B =
     if (isEmpty) ifEmpty else f(this.get)
 
   /** Returns the result of applying $f to this $option's value if
@@ -166,7 +167,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *  @see map
    *  @see foreach
    */
-  @inline final def flatMap[B](f: A => Option[B]): Option[B] =
+  @inline final def flatMap[B](@local f: A => Option[B]): Option[B] =
     if (isEmpty) None else f(this.get)
 
   def flatten[B](implicit ev: A <:< Option[B]): Option[B] =
@@ -177,7 +178,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *
    *  @param  p   the predicate used for testing.
    */
-  @inline final def filter(p: A => Boolean): Option[A] =
+  @inline final def filter(@local p: A => Boolean): Option[A] =
     if (isEmpty || p(this.get)) this else None
 
   /** Returns this $option if it is nonempty '''and''' applying the predicate $p to
@@ -185,7 +186,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *
    *  @param  p   the predicate used for testing.
    */
-  @inline final def filterNot(p: A => Boolean): Option[A] =
+  @inline final def filterNot(@local p: A => Boolean): Option[A] =
     if (isEmpty || !p(this.get)) this else None
 
   /** Returns false if the option is $none, true otherwise.
@@ -203,13 +204,24 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *  collection with max size 1.
    */
   class WithFilter(p: A => Boolean) {
-    def map[B](f: A => B): Option[B] = self filter p map f
-    def flatMap[B](f: A => Option[B]): Option[B] = self filter p flatMap f
-    def foreach[U](f: A => U): Unit = self filter p foreach f
+    def map[B](@local f: A => B): Option[B] = self filter p map f
+    def flatMap[B](@local f: A => Option[B]): Option[B] = self filter p flatMap f
+    def foreach[U](@local f: A => U): Unit = self filter p foreach f
     def withFilter(q: A => Boolean): WithFilter = new WithFilter(x => p(x) && q(x))
   }
 
   /** Tests whether the option contains a given value as an element.
+   *
+   *  @example {{{
+   *  // Returns true because Some instance contains string "something" which equals "something".
+   *  Some("something") contains "something"
+   *
+   *  // Returns false because "something" != "anything".
+   *  Some("something") contains "anything"
+   *
+   *  // Returns false when method called on None.
+   *  None contains "anything"
+   *  }}}
    *
    *  @param elem the element to test.
    *  @return `true` if the option has an element that is equal (as
@@ -224,7 +236,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *
    *  @param  p   the predicate to test
    */
-  @inline final def exists(p: A => Boolean): Boolean =
+  @inline final def exists(@local p: A => Boolean): Boolean =
     !isEmpty && p(this.get)
 
   /** Returns true if this option is empty '''or''' the predicate
@@ -232,7 +244,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *
    *  @param  p   the predicate to test
    */
-  @inline final def forall(p: A => Boolean): Boolean = isEmpty || p(this.get)
+  @inline final def forall(@local p: A => Boolean): Boolean = isEmpty || p(this.get)
 
   /** Apply the given procedure $f to the option's value,
    *  if it is nonempty. Otherwise, do nothing.
@@ -241,7 +253,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
    *  @see map
    *  @see flatMap
    */
-  @inline final def foreach[U](f: A => U) {
+  @inline final def foreach[U](@local f: A => U) {
     if (!isEmpty) f(this.get)
   }
 
@@ -251,11 +263,22 @@ sealed abstract class Option[+A] extends Product with Serializable {
    * nonempty '''and''' `pf` is defined for that value.
    * Returns $none otherwise.
    *
+   *  @example {{{
+   *  // Returns Some(HTTP) because the partial function covers the case.
+   *  Some("http") collect {case "http" => "HTTP"}
+   *
+   *  // Returns None because the partial function doesn't cover the case.
+   *  Some("ftp") collect {case "http" => "HTTP"}
+   *
+   *  // Returns None because None is passed to the collect method.
+   *  None collect {case value => value}
+   *  }}}
+   *
    *  @param  pf   the partial function.
    *  @return the result of applying `pf` to this $option's
    *  value (if possible), or $none.
    */
-  @inline final def collect[B](pf: PartialFunction[A, B]): Option[B] =
+  @inline final def collect[B](@local pf: PartialFunction[A, B]): Option[B] =
     if (!isEmpty) pf.lift(this.get) else None
 
   /** Returns this $option if it is nonempty,
@@ -306,6 +329,7 @@ sealed abstract class Option[+A] extends Product with Serializable {
  *  @author  Martin Odersky
  *  @version 1.0, 16/07/2003
  */
+@SerialVersionUID(1234815782226070388L) // value computed by serialver for 2.11.2, annotation added in 2.11.4
 final case class Some[+A](x: A) extends Option[A] {
   def isEmpty = false
   def get = x
@@ -317,6 +341,7 @@ final case class Some[+A](x: A) extends Option[A] {
  *  @author  Martin Odersky
  *  @version 1.0, 16/07/2003
  */
+@SerialVersionUID(5066590221178148012L) // value computed by serialver for 2.11.2, annotation added in 2.11.4
 case object None extends Option[Nothing] {
   def isEmpty = true
   def get = throw new NoSuchElementException("None.get")

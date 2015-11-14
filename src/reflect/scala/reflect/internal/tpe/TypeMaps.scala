@@ -17,12 +17,11 @@ private[internal] trait TypeMaps {
     *  so it is no longer carries the too-stealthy name "deAlias".
     */
   object normalizeAliases extends TypeMap {
-    def apply(tp: Type): Type = tp match {
-      case TypeRef(_, sym, _) if sym.isAliasType =>
-        def msg = if (tp.isHigherKinded) s"Normalizing type alias function $tp" else s"Dealiasing type alias $tp"
-        mapOver(logResult(msg)(tp.normalize))
-      case _                                     => mapOver(tp)
-    }
+    def apply(tp: Type): Type = mapOver(tp match {
+      case TypeRef(_, sym, _) if sym.isAliasType && tp.isHigherKinded => logResult(s"Normalized type alias function $tp")(tp.normalize)
+      case TypeRef(_, sym, _) if sym.isAliasType                      => tp.normalize
+      case tp                                                         => tp
+    })
   }
 
   /** Remove any occurrence of type <singleton> from this type and its parents */
@@ -49,7 +48,7 @@ private[internal] trait TypeMaps {
       case TypeRef(_, sym, _) if sym.isAliasType    => apply(tp.dealias)
       case TypeRef(_, sym, _) if sym.isAbstractType => apply(tp.bounds.hi)
       case rtp @ RefinedType(parents, decls)        => copyRefinedType(rtp, parents mapConserve this, decls)
-      case AnnotatedType(_, _, _)                   => mapOver(tp)
+      case AnnotatedType(_, _)                      => mapOver(tp)
       case _                                        => tp             // no recursion - top level only
     }
   }
@@ -175,12 +174,12 @@ private[internal] trait TypeMaps {
       case tv@TypeVar(_, constr) =>
         if (constr.instValid) this(constr.inst)
         else tv.applyArgs(mapOverArgs(tv.typeArgs, tv.params))  //@M !args.isEmpty implies !typeParams.isEmpty
-      case AnnotatedType(annots, atp, selfsym) =>
+      case AnnotatedType(annots, atp) =>
         val annots1 = mapOverAnnotations(annots)
         val atp1 = this(atp)
         if ((annots1 eq annots) && (atp1 eq atp)) tp
         else if (annots1.isEmpty) atp1
-        else AnnotatedType(annots1, atp1, selfsym)
+        else AnnotatedType(annots1, atp1)
       /*
             case ErrorType => tp
             case WildcardType => tp
@@ -395,7 +394,7 @@ private[internal] trait TypeMaps {
             s"Widened lone occurrence of $tp1 inside existential to $word bound"
           }
           if (!repl.typeSymbol.isBottomClass && count == 1 && !containsTypeParam)
-            logResult(msg)(repl)
+            debuglogResult(msg)(repl)
           else
             tp1
         case _ =>
@@ -421,6 +420,22 @@ private[internal] trait TypeMaps {
       case Ident(_) if tree.tpe.isStable => tree
       case _                             => super.mapOver(tree)
     }
+  }
+
+  /**
+   * Get rid of BoundedWildcardType where variance allows us to do so.
+   * Invariant: `wildcardExtrapolation(tp) =:= tp`
+   *
+   * For example, the MethodType given by `def bla(x: (_ >: String)): (_ <: Int)`
+   * is both a subtype and a supertype of `def bla(x: String): Int`.
+   */
+  object wildcardExtrapolation extends TypeMap(trackVariance = true) {
+    def apply(tp: Type): Type =
+      tp match {
+        case BoundedWildcardType(TypeBounds(lo, AnyTpe)) if variance.isContravariant => lo
+        case BoundedWildcardType(TypeBounds(NothingTpe, hi)) if variance.isCovariant => hi
+        case tp => mapOver(tp)
+      }
   }
 
   /** Might the given symbol be important when calculating the prefix
@@ -524,7 +539,7 @@ private[internal] trait TypeMaps {
     private def correspondingTypeArgument(lhs: Type, rhs: Type): Type = {
       val TypeRef(_, lhsSym, lhsArgs) = lhs
       val TypeRef(_, rhsSym, rhsArgs) = rhs
-      require(lhsSym.safeOwner == rhsSym, s"$lhsSym is not a type parameter of $rhsSym")
+      require(lhsSym.owner == rhsSym, s"$lhsSym is not a type parameter of $rhsSym")
 
       // Find the type parameter position; we'll use the corresponding argument.
       // Why are we checking by name rather than by equality? Because for
@@ -539,14 +554,14 @@ private[internal] trait TypeMaps {
       else {
         // It's easy to get here when working on hardcore type machinery (not to
         // mention when not doing so, see above) so let's provide a standout error.
-        def own_s(s: Symbol) = s.nameString + " in " + s.safeOwner.nameString
+        def own_s(s: Symbol) = s.nameString + " in " + s.owner.nameString
         def explain =
           sm"""|   sought  ${own_s(lhsSym)}
                | classSym  ${own_s(rhsSym)}
                |  tparams  ${rhsSym.typeParams map own_s mkString ", "}
                |"""
 
-        if (argIndex < 0)
+        if (!rhsArgs.isDefinedAt(argIndex))
           abort(s"Something is wrong: cannot find $lhs in applied type $rhs\n" + explain)
         else {
           val targ   = rhsArgs(argIndex)
@@ -582,6 +597,7 @@ private[internal] trait TypeMaps {
         else if (!matchesPrefixAndClass(pre, clazz)(tparam.owner))
           loop(nextBase.prefix, clazz.owner)
         else nextBase match {
+          case NoType                         => loop(NoType, clazz.owner) // backstop for SI-2797, must remove `SingletonType#isHigherKinded` and run pos/t2797.scala to get here.
           case applied @ TypeRef(_, _, _)     => correspondingTypeArgument(classParam, applied)
           case ExistentialType(eparams, qtpe) => captureSkolems(eparams) ; loop(qtpe, clazz)
           case t                              => abort(s"$tparam in ${tparam.owner} cannot be instantiated from ${seenFromPrefix.widen}")
@@ -594,10 +610,8 @@ private[internal] trait TypeMaps {
     // Since pre may be something like ThisType(A) where trait A { self: B => },
     // we have to test the typeSymbol of the widened type, not pre.typeSymbol, or
     // B will not be considered.
-    private def matchesPrefixAndClass(pre: Type, clazz: Symbol)(candidate: Symbol) = pre.widen match {
-      case _: TypeVar => false
-      case wide       => (clazz == candidate) && (wide.typeSymbol isSubClass clazz)
-    }
+    private def matchesPrefixAndClass(pre: Type, clazz: Symbol)(candidate: Symbol) =
+      (clazz == candidate) && (pre.widen.typeSymbol isSubClass clazz)
 
     // Whether the annotation tree currently being mapped over has had a This(_) node rewritten.
     private[this] var wroteAnnotation = false
@@ -669,7 +683,8 @@ private[internal] trait TypeMaps {
 
   /** A base class to compute all substitutions */
   abstract class SubstMap[T](from: List[Symbol], to: List[T]) extends TypeMap {
-    assert(sameLength(from, to), "Unsound substitution from "+ from +" to "+ to)
+    // OPT this check was 2-3% of some profiles, demoted to -Xdev
+    if (isDeveloper) assert(sameLength(from, to), "Unsound substitution from "+ from +" to "+ to)
 
     /** Are `sym` and `sym1` the same? Can be tuned by subclasses. */
     protected def matches(sym: Symbol, sym1: Symbol): Boolean = sym eq sym1
@@ -719,6 +734,12 @@ private[internal] trait TypeMaps {
           else appliedType(tcon.typeConstructor, args)
         case SingleType(NoPrefix, sym) =>
           substFor(sym)
+        case ClassInfoType(parents, decls, sym) =>
+          val parents1 = parents mapConserve this
+          // We don't touch decls here; they will be touched when an enclosing TreeSubstitutor
+          // transforms the tree that defines them.
+          if (parents1 eq parents) tp
+          else ClassInfoType(parents1, decls, sym)
         case _ =>
           tp
       }
@@ -842,7 +863,7 @@ private[internal] trait TypeMaps {
   object IsDependentCollector extends TypeCollector(false) {
     def traverse(tp: Type) {
       if (tp.isImmediatelyDependent) result = true
-      else if (!result) mapOver(tp)
+      else if (!result) mapOver(tp.dealias)
     }
   }
 
@@ -857,33 +878,26 @@ private[internal] trait TypeMaps {
   class InstantiateDependentMap(params: List[Symbol], actuals0: List[Type]) extends TypeMap with KeepOnlyTypeConstraints {
     private val actuals      = actuals0.toIndexedSeq
     private val existentials = new Array[Symbol](actuals.size)
-    def existentialsNeeded: List[Symbol] = existentials.filter(_ ne null).toList
+    def existentialsNeeded: List[Symbol] = existentials.iterator.filter(_ ne null).toList
 
-    private object StableArg {
-      def unapply(param: Symbol) = Arg unapply param map actuals filter (tp =>
-        tp.isStable && (tp.typeSymbol != NothingClass)
-        )
-    }
-    private object Arg {
-      def unapply(param: Symbol) = Some(params indexOf param) filter (_ >= 0)
-    }
-
-    def apply(tp: Type): Type = mapOver(tp) match {
-      // unsound to replace args by unstable actual #3873
-      case SingleType(NoPrefix, StableArg(arg)) => arg
-      // (soundly) expand type alias selections on implicit arguments,
-      // see depmet_implicit_oopsla* test cases -- typically, `param.isImplicit`
-      case tp1 @ TypeRef(SingleType(NoPrefix, Arg(pid)), sym, targs) =>
-        val arg = actuals(pid)
-        val res = typeRef(arg, sym, targs)
-        if (res.typeSymbolDirect.isAliasType) res.dealias else tp1
-      // don't return the original `tp`, which may be different from `tp1`,
-      // due to dropping annotations
-      case tp1 => tp1
+    private object StableArgTp {
+      // type of actual arg corresponding to param -- if the type is stable
+      def unapply(param: Symbol): Option[Type] = (params indexOf param) match {
+        case -1  => None
+        case pid =>
+          val tp = actuals(pid)
+          if (tp.isStable && (tp.typeSymbol != NothingClass)) Some(tp)
+          else None
+      }
     }
 
-    /* Return the type symbol for referencing a parameter inside the existential quantifier.
-     * (Only needed if the actual is unstable.)
+    /** Return the type symbol for referencing a parameter that's instantiated to an unstable actual argument.
+     *
+     * To soundly abstract over an unstable value (x: T) while retaining the most type information,
+     * use `x.type forSome { type x.type <: T with Singleton}`
+     * `typeOf[T].narrowExistentially(symbolOf[x])`.
+     *
+     * See also: captureThis in AsSeenFromMap.
      */
     private def existentialFor(pid: Int) = {
       if (existentials(pid) eq null) {
@@ -894,6 +908,38 @@ private[internal] trait TypeMaps {
           )
       }
       existentials(pid)
+    }
+
+    private object UnstableArgTp {
+      // existential quantifier and type of corresponding actual arg with unstable type
+      def unapply(param: Symbol): Option[(Symbol, Type)] = (params indexOf param) match {
+        case -1  => None
+        case pid =>
+          val sym = existentialFor(pid)
+          Some((sym, sym.tpe_*)) // refers to an actual value, must be kind-*
+      }
+    }
+
+    private object StabilizedArgTp {
+      def unapply(param: Symbol): Option[Type] =
+        param match {
+          case StableArgTp(tp)      => Some(tp)  // (1)
+          case UnstableArgTp(_, tp) => Some(tp)  // (2)
+          case _ => None
+        }
+    }
+
+    /** instantiate `param.type` to the (sound approximation of the) type `T`
+     * of the actual argument `arg` that was passed in for `param`
+     *
+     * (1) If `T` is stable, we can just use that.
+     *
+     * (2) SI-3873: it'd be unsound to instantiate `param.type` to an unstable `T`,
+     * so we approximate to `X forSome {type X <: T with Singleton}` -- we can't soundly say more.
+     */
+    def apply(tp: Type): Type = tp match {
+      case SingleType(NoPrefix, StabilizedArgTp(tp)) => tp
+      case _                                         => mapOver(tp)
     }
 
     //AM propagate more info to annotations -- this seems a bit ad-hoc... (based on code by spoon)
@@ -918,13 +964,9 @@ private[internal] trait TypeMaps {
       // Both examples are from run/constrained-types.scala.
       object treeTrans extends Transformer {
         override def transform(tree: Tree): Tree = tree.symbol match {
-          case StableArg(actual) =>
-            gen.mkAttributedQualifier(actual, tree.symbol)
-          case Arg(pid) =>
-            val sym = existentialFor(pid)
-            Ident(sym) copyAttrs tree setType typeRef(NoPrefix, sym, Nil)
-          case _ =>
-            super.transform(tree)
+          case StableArgTp(tp)          => gen.mkAttributedQualifier(tp, tree.symbol)
+          case UnstableArgTp(quant, tp) => Ident(quant) copyAttrs tree setType tp
+          case _                        => super.transform(tree)
         }
       }
       treeTrans transform arg
@@ -944,7 +986,7 @@ private[internal] trait TypeMaps {
     }
   }
 
-  /** A map to convert every occurrence of a type variable to a wildcard type. */
+  /** A map to convert each occurrence of a type variable to its origin. */
   object typeVarToOriginMap extends TypeMap {
     def apply(tp: Type): Type = tp match {
       case TypeVar(origin, _) => origin
@@ -970,22 +1012,6 @@ private[internal] trait TypeMaps {
         if (t.symbol == sym)
           result = true
       }
-      arg
-    }
-  }
-
-  /** A map to implement the `contains` method. */
-  class ContainsTypeCollector(t: Type) extends TypeCollector(false) {
-    def traverse(tp: Type) {
-      if (!result) {
-        if (tp eq t) result = true
-        else mapOver(tp)
-      }
-    }
-    override def mapOver(arg: Tree) = {
-      for (t <- arg)
-        traverse(t.tpe)
-
       arg
     }
   }
@@ -1090,7 +1116,7 @@ private[internal] trait TypeMaps {
             tp
         }
       case SingleType(pre, sym) =>
-        if (sym.isPackage) tp
+        if (sym.hasPackageFlag) tp
         else {
           val pre1 = this(pre)
           try {
@@ -1154,7 +1180,7 @@ private[internal] trait TypeMaps {
       case SuperType(_, _) => mapOver(tp)
       case TypeBounds(_, _) => mapOver(tp)
       case TypeVar(_, _) => mapOver(tp)
-      case AnnotatedType(_,_,_) => mapOver(tp)
+      case AnnotatedType(_, _) => mapOver(tp)
       case ExistentialType(_, _) => mapOver(tp)
       case _ => tp
     }

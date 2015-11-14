@@ -10,6 +10,8 @@ package internal
 import scala.annotation.elidable
 import scala.collection.{ mutable, immutable }
 import util._
+import java.util.concurrent.TimeUnit
+import scala.reflect.internal.{TreeGen => InternalTreeGen}
 
 abstract class SymbolTable extends macros.Universe
                               with Collections
@@ -39,38 +41,42 @@ abstract class SymbolTable extends macros.Universe
                               with CapturedVariables
                               with StdAttachments
                               with StdCreators
-                              with BuildUtils
+                              with ReificationSupport
                               with PrivateWithin
+                              with pickling.Translations
+                              with FreshNames
+                              with Internals
+                              with Reporting
 {
 
-  val gen = new TreeGen { val global: SymbolTable.this.type = SymbolTable.this }
-  lazy val treeBuild = gen
+  val gen = new InternalTreeGen { val global: SymbolTable.this.type = SymbolTable.this }
 
   def log(msg: => AnyRef): Unit
-  def warning(msg: String): Unit     = Console.err.println(msg)
-  def inform(msg: String): Unit      = Console.err.println(msg)
-  def globalError(msg: String): Unit = abort(msg)
-  def abort(msg: String): Nothing    = throw new FatalError(supplementErrorMessage(msg))
+
+  protected def elapsedMessage(msg: String, start: Long) =
+    msg + " in " + (TimeUnit.NANOSECONDS.toMillis(System.nanoTime()) - start) + "ms"
+
+  def informProgress(msg: String)          = if (settings.verbose) inform("[" + msg + "]")
+  def informTime(msg: String, start: Long) = informProgress(elapsedMessage(msg, start))
 
   def shouldLogAtThisPhase = false
   def isPastTyper = false
-
-  @deprecated("Give us a reason", "2.10.0")
-  def abort(): Nothing = abort("unknown error")
+  protected def isDeveloper: Boolean = settings.debug
 
   @deprecated("Use devWarning if this is really a warning; otherwise use log", "2.11.0")
   def debugwarn(msg: => String): Unit = devWarning(msg)
 
   /** Override with final implementation for inlining. */
   def debuglog(msg:  => String): Unit = if (settings.debug) log(msg)
-  def devWarning(msg: => String): Unit = if (settings.debug) Console.err.println(msg)
+  def devWarning(msg: => String): Unit = if (isDeveloper) Console.err.println(msg)
   def throwableAsString(t: Throwable): String = "" + t
+  def throwableAsString(t: Throwable, maxFrames: Int): String = t.getStackTrace take maxFrames mkString "\n  at "
+
+  @inline final def devWarningDumpStack(msg: => String, maxFrames: Int): Unit =
+    devWarning(msg + "\n" + throwableAsString(new Throwable, maxFrames))
 
   /** Prints a stack trace if -Ydebug or equivalent was given, otherwise does nothing. */
   def debugStack(t: Throwable): Unit  = devWarning(throwableAsString(t))
-
-  /** Overridden when we know more about what was happening during a failure. */
-  def supplementErrorMessage(msg: String): String = msg
 
   private[scala] def printCaller[T](msg: String)(result: T) = {
     Console.err.println("%s: %s\nCalled from: %s".format(msg, result,
@@ -104,6 +110,17 @@ abstract class SymbolTable extends macros.Universe
       log(msg + ": " + result)
 
     result
+  }
+  @inline
+  final private[scala] def debuglogResultIf[T](msg: => String, cond: T => Boolean)(result: T): T = {
+    if (cond(result))
+      debuglog(msg + ": " + result)
+
+    result
+  }
+
+  @inline final def findSymbol(xs: TraversableOnce[Symbol])(p: Symbol => Boolean): Symbol = {
+    xs find p getOrElse NoSymbol
   }
 
   // For too long have we suffered in order to sort NAMES.
@@ -219,11 +236,31 @@ abstract class SymbolTable extends macros.Universe
     finally popPhase(saved)
   }
 
+  final def findPhaseWithName(phaseName: String): Phase = {
+    var ph = phase
+    while (ph != NoPhase && ph.name != phaseName) {
+      ph = ph.prev
+    }
+    if (ph eq NoPhase) phase else ph
+  }
+  final def enteringPhaseWithName[T](phaseName: String)(body: => T): T = {
+    val phase = findPhaseWithName(phaseName)
+    enteringPhase(phase)(body)
+  }
+
+  def slowButSafeEnteringPhase[T](ph: Phase)(op: => T): T = {
+    if (isCompilerUniverse) enteringPhase(ph)(op)
+    else op
+  }
+
   @inline final def exitingPhase[T](ph: Phase)(op: => T): T = enteringPhase(ph.next)(op)
   @inline final def enteringPrevPhase[T](op: => T): T       = enteringPhase(phase.prev)(op)
 
   @inline final def enteringPhaseNotLaterThan[T](target: Phase)(op: => T): T =
     if (isAtPhaseAfter(target)) enteringPhase(target)(op) else op
+
+  def slowButSafeEnteringPhaseNotLaterThan[T](target: Phase)(op: => T): T =
+    if (isCompilerUniverse) enteringPhaseNotLaterThan(target)(op) else op
 
   final def isValid(period: Period): Boolean =
     period != 0 && runId(period) == currentRunId && {
@@ -301,7 +338,6 @@ abstract class SymbolTable extends macros.Universe
       case _ => false
     }
     if (pkgModule.isModule && !fromSource) {
-      // println("open "+pkgModule)//DEBUG
       openPackageModule(pkgModule, pkgClass)
     }
   }
@@ -311,22 +347,49 @@ abstract class SymbolTable extends macros.Universe
 
     // Weak references so the garbage collector will take care of
     // letting us know when a cache is really out of commission.
-    private val caches = WeakHashSet[Clearable]()
+    import java.lang.ref.WeakReference
+    private var caches = List[WeakReference[Clearable]]()
 
     def recordCache[T <: Clearable](cache: T): T = {
-      caches += cache
+      caches ::= new WeakReference(cache)
       cache
+    }
+
+    /**
+     * Removes a cache from the per-run caches. This is useful for testing: it allows running the
+     * compiler and then inspect the state of a cache.
+     */
+    def unrecordCache[T <: Clearable](cache: T): Unit = {
+      caches = caches.filterNot(_.get eq cache)
     }
 
     def clearAll() = {
       debuglog("Clearing " + caches.size + " caches.")
-      caches foreach (_.clear)
+      caches foreach (ref => Option(ref.get).foreach(_.clear))
+      caches = caches.filterNot(_.get == null)
     }
 
     def newWeakMap[K, V]()        = recordCache(mutable.WeakHashMap[K, V]())
     def newMap[K, V]()            = recordCache(mutable.HashMap[K, V]())
     def newSet[K]()               = recordCache(mutable.HashSet[K]())
     def newWeakSet[K <: AnyRef]() = recordCache(new WeakHashSet[K]())
+
+    def newAnyRefMap[K <: AnyRef, V]() = recordCache(mutable.AnyRefMap[K, V]())
+    def newGeneric[T](f: => T): () => T = {
+      val NoCached: T = null.asInstanceOf[T]
+      var cached: T = NoCached
+      var cachedRunId = NoRunId
+      recordCache(new Clearable {
+        def clear(): Unit = cached = NoCached
+      })
+      () => {
+        if (currentRunId != cachedRunId || cached == NoCached) {
+          cached = f
+          cachedRunId = currentRunId
+        }
+        cached
+      }
+    }
   }
 
   /** The set of all installed infotransformers. */
@@ -343,10 +406,9 @@ abstract class SymbolTable extends macros.Universe
    */
   def isCompilerUniverse = false
 
-  @deprecated("Use enteringPhase", "2.10.0")
+  @deprecated("Use enteringPhase", "2.10.0") // Used in SBT 0.12.4
   @inline final def atPhase[T](ph: Phase)(op: => T): T = enteringPhase(ph)(op)
-  @deprecated("Use enteringPhaseNotLaterThan", "2.10.0")
-  @inline final def atPhaseNotLaterThan[T](target: Phase)(op: => T): T = enteringPhaseNotLaterThan(target)(op)
+
 
   /**
    * Adds the `sm` String interpolator to a [[scala.StringContext]].

@@ -6,7 +6,7 @@ object Test {
    *  ...
    */
   
-  val testCode = <code>
+  val testCode = """
   
     class xyz[A] extends annotation.TypeConstraint
     
@@ -25,7 +25,7 @@ object Test {
       }}
     }}
     
-  </code>.text
+  """
   
   def main(args: Array[String]) {
     val settings = new Settings()

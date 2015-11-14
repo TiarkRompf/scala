@@ -113,8 +113,8 @@ object FunctionZero extends Function(0) {
 
 object FunctionOne extends Function(1) {
   override def classAnnotation    = "@annotation.implicitNotFound(msg = \"No implicit view available from ${T1} => ${R}.\")\n"
-  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Float, scala.Double/*, scala.AnyRef*/) "
-  override def covariantSpecs     = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double/*, scala.AnyRef*/) "
+  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Float, scala.Double) "
+  override def covariantSpecs     = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) "
 
   override def descriptiveComment = "  " + functionNTemplate.format("succ", "anonfun1",
 """
@@ -123,7 +123,10 @@ object FunctionOne extends Function(1) {
  *      def apply(x: Int): Int = x + 1
  *    }
  *    assert(succ(0) == anonfun1(0))
- * """)
+ * """) + """
+ *
+ *  Note that the difference between `Function1` and [[scala.PartialFunction]]
+ *  is that the latter can specify inputs which it will not handle."""
 
   override def moreMethods = """
   /** Composes two instances of Function1 in a new Function1, with this function applied last.
@@ -178,13 +181,7 @@ class Function(val i: Int) extends Group("Function") with Arity {
  *
  *  {{{
  *  object Main extends App {%s}
- *  }}}
- *
- *  Note that `Function1` does not define a total function, as might
- *  be suggested by the existence of [[scala.PartialFunction]]. The only
- *  distinction between `Function1` and `PartialFunction` is that the
- *  latter can specify inputs which it will not handle.
-"""
+ *  }}}"""
 
   def toStr() = "\"" + ("<function%d>" format i) + "\""
   def apply() = {

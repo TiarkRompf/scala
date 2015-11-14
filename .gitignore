@@ -9,10 +9,22 @@
 # see also test/files/.gitignore
 #
 
-*.jar
-*~
+#
+# JARs aren't checked in, they are fetched by Ant / pull_binary_libs.sh
+#
+# We could be more concise with /lib/**/*.jar but that assumes
+# a late-model git.
+#
+/lib/ant/*.jar
+/lib/*.jar
+/test/files/codelib/*.jar
+/test/files/lib/*.jar
+/test/files/speclib/instrumented.jar
+/tools/*.jar
 
-build.properties
+# Developer specific Ant properties
+/build.properties
+/buildcharacter.properties
 
 # target directories for ant build
 /build/
@@ -22,22 +34,23 @@ build.properties
 /out/
 /bin/
 /sandbox/
+/.ant-targets-build.xml
 
 # eclipse, intellij
 /.classpath
 /.project
-/src/intellij/*.iml
-/src/intellij/*.ipr
-/src/intellij/*.iws
-/.cache
+/src/intellij*/*.iml
+/src/intellij*/*.ipr
+/src/intellij*/*.iws
+**/.cache
 /.idea
 /.settings
 
-# bak files produced by ./cleanup-commit
-*.bak
-
 # Standard symbolic link to build/quick/bin
-qbin
+/qbin
 
-# Mac specific, but that is common enough a dev platform to warrant inclusion.
-.DS_Store
+# Sbt's target directories
+/target/
+/project/target/
+/project/project/target
+/build-sbt/

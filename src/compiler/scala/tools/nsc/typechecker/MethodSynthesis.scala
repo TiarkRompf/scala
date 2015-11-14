@@ -8,6 +8,7 @@ package typechecker
 import symtab.Flags._
 import scala.reflect.internal.util.StringOps.{ ojoin }
 import scala.reflect.ClassTag
+import scala.reflect.internal.util.ListOfNil
 import scala.reflect.runtime.{ universe => ru }
 import scala.language.higherKinds
 
@@ -21,32 +22,17 @@ trait MethodSynthesis {
   import definitions._
   import CODE._
 
-  object synthesisUtil {
-    type TT[T]  = ru.TypeTag[T]
-    type CT[T] = ClassTag[T]
-
-    def ValOrDefDef(sym: Symbol, body: Tree) =
-      if (sym.isLazy) ValDef(sym, body)
-      else DefDef(sym, body)
-
-    /** The annotations amongst those found on the original symbol which
-     *  should be propagated to this kind of accessor.
-     */
-    def deriveAnnotations(initial: List[AnnotationInfo], category: Symbol, keepClean: Boolean): List[AnnotationInfo] = {
-      initial filter { ann =>
-        // There are no meta-annotation arguments attached to `ann`
-        if (ann.metaAnnotations.isEmpty) {
-          // A meta-annotation matching `annotKind` exists on `ann`'s definition.
-          (ann.defaultTargets contains category) ||
-          // `ann`'s definition has no meta-annotations, and `keepClean` is true.
-          (ann.defaultTargets.isEmpty && keepClean)
-        }
-        // There are meta-annotation arguments, and one of them matches `annotKind`
-        else ann.metaAnnotations exists (_ matches category)
-      }
+  /** The annotations amongst those found on the original symbol which
+   *  should be propagated to this kind of accessor.
+   */
+  def deriveAnnotations(initial: List[AnnotationInfo], category: Symbol, keepClean: Boolean): List[AnnotationInfo] = {
+    def annotationFilter(ann: AnnotationInfo) = ann.metaAnnotations match {
+      case Nil if ann.defaultTargets.isEmpty => keepClean                             // no meta-annotations or default targets
+      case Nil                               => ann.defaultTargets contains category  // default targets exist for ann
+      case metas                             => metas exists (_ matches category)     // meta-annotations attached to ann
     }
+    initial filter annotationFilter
   }
-  import synthesisUtil._
 
   class ClassMethodSynthesis(val clazz: Symbol, localTyper: Typer) {
     def mkThis = This(clazz) setPos clazz.pos.focus
@@ -67,7 +53,10 @@ trait MethodSynthesis {
     }
 
     private def finishMethod(method: Symbol, f: Symbol => Tree): Tree =
-      localTyper typed ValOrDefDef(method, f(method))
+      localTyper typed (
+        if (method.isLazy) ValDef(method, f(method))
+        else DefDef(method, f(method))
+      )
 
     private def createInternal(name: Name, f: Symbol => Tree, info: Type): Tree = {
       val name1 = name.toTermName
@@ -105,7 +94,7 @@ trait MethodSynthesis {
     def createSwitchMethod(name: Name, range: Seq[Int], returnType: Type)(f: Int => Tree) = {
       createMethod(name, List(IntTpe), returnType) { m =>
         val arg0    = Ident(m.firstParam)
-        val default = DEFAULT ==> THROW(IndexOutOfBoundsExceptionClass, arg0)
+        val default = DEFAULT ==> Throw(IndexOutOfBoundsExceptionClass.tpe_*, fn(arg0, nme.toString_))
         val cases   = range.map(num => CASE(LIT(num)) ==> f(num)).toList :+ default
 
         Match(arg0, cases)
@@ -224,7 +213,9 @@ trait MethodSynthesis {
             List(cd, mdef)
           case _ =>
             // Shouldn't happen, but let's give ourselves a reasonable error when it does
-            abort("No synthetics for " + meth + ": synthetics contains " + context.unit.synthetics.keys.mkString(", "))
+            context.error(cd.pos, s"Internal error: Symbol for synthetic factory method not found among ${context.unit.synthetics.keys.mkString(", ")}")
+            // Soldier on for the sake of the presentation compiler
+            List(cd)
         }
       case _ =>
         stat :: Nil
@@ -367,8 +358,9 @@ trait MethodSynthesis {
       def derivedSym: Symbol = {
         // Only methods will do! Don't want to pick up any stray
         // companion objects of the same name.
-        val result = enclClass.info decl name suchThat (x => x.isMethod && x.isSynthetic)
-        assert(result != NoSymbol, "not found: "+name+" in "+enclClass+" "+enclClass.info.decls)
+        val result = enclClass.info decl name filter (x => x.isMethod && x.isSynthetic)
+        if (result == NoSymbol || result.isOverloaded)
+          context.error(tree.pos, s"Internal error: Unable to find the synthetic factory method corresponding to implicit class $name in $enclClass / ${enclClass.info.decls}")
         result
       }
       def derivedTree: DefDef          =
@@ -393,12 +385,9 @@ trait MethodSynthesis {
       }
     }
     case class Getter(tree: ValDef) extends BaseGetter(tree) {
-      override def derivedSym = (
-        if (mods.isDeferred) basisSym
-        else basisSym.getter(enclClass)
-      )
-
-      override def derivedTree: DefDef = {
+      override def derivedSym = if (mods.isDeferred) basisSym else basisSym.getterIn(enclClass)
+      private def derivedRhs  = if (mods.isDeferred) EmptyTree else fieldSelection
+      private def derivedTpt = {
         // For existentials, don't specify a type for the getter, even one derived
         // from the symbol! This leads to incompatible existentials for the field and
         // the getter. Let the typer do all the work. You might think "why only for
@@ -407,29 +396,16 @@ trait MethodSynthesis {
         // starts compiling (instead of failing like it's supposed to) because the typer
         // expects to be able to identify escaping locals in typedDefDef, and fails to
         // spot that brand of them. In other words it's an artifact of the implementation.
-        val tpt = derivedSym.tpe.finalResultType match {
-          case ExistentialType(_, _)  => TypeTree()
-          case _ if mods.isDeferred   => TypeTree()
+        val tpt = derivedSym.tpe_*.finalResultType.widen match {
+          // Range position errors ensue if we don't duplicate this in some
+          // circumstances (at least: concrete vals with existential types.)
+          case ExistentialType(_, _)  => TypeTree() setOriginal (tree.tpt.duplicate setPos tree.tpt.pos.focus)
+          case _ if mods.isDeferred   => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
           case tp                     => TypeTree(tp)
         }
-        tpt setPos derivedSym.pos.focus
-        // keep type tree of original abstract field
-        if (mods.isDeferred)
-          tpt setOriginal tree.tpt
-
-        // TODO - reconcile this with the DefDef creator in Trees (which
-        //   at this writing presented no way to pass a tree in for tpt.)
-        atPos(derivedSym.pos) {
-          DefDef(
-            Modifiers(derivedSym.flags),
-            derivedSym.name.toTermName,
-            Nil,
-            Nil,
-            tpt,
-            if (mods.isDeferred) EmptyTree else fieldSelection
-          ) setSymbol derivedSym
-        }
+        tpt setPos tree.tpt.pos.focus
       }
+      override def derivedTree: DefDef = newDefDef(derivedSym, derivedRhs)(tpt = derivedTpt)
     }
     /** Implements lazy value accessors:
      *    - for lazy values of type Unit and all lazy fields inside traits,
@@ -455,13 +431,13 @@ trait MethodSynthesis {
       override def derivedSym = basisSym.lazyAccessor
       override def derivedTree: DefDef = {
         val ValDef(_, _, tpt0, rhs0) = tree
-        val rhs1 = transformed.getOrElse(rhs0, rhs0)
+        val rhs1 = context.unit.transformed.getOrElse(rhs0, rhs0)
         val body = (
           if (tree.symbol.owner.isTrait || hasUnitType(basisSym)) rhs1
           else gen.mkAssignAndReturn(basisSym, rhs1)
         )
-        derivedSym.setPos(tree.pos) // cannot set it at createAndEnterSymbol because basisSym can possible stil have NoPosition
-        val ddefRes = atPos(tree.pos)(DefDef(derivedSym, new ChangeOwnerAndModuleClassTraverser(basisSym, derivedSym)(body)))
+        derivedSym setPos tree.pos // cannot set it at createAndEnterSymbol because basisSym can possible stil have NoPosition
+        val ddefRes = DefDef(derivedSym, new ChangeOwnerAndModuleClassTraverser(basisSym, derivedSym)(body))
         // ValDef will have its position focused whereas DefDef will have original correct rangepos
         // ideally positions would be correct at the creation time but lazy vals are really a special case
         // here so for the sake of keeping api clean we fix positions manually in LazyValGetter
@@ -476,7 +452,7 @@ trait MethodSynthesis {
       def flagsMask  = SetterFlags
       def flagsExtra = ACCESSOR
 
-      override def derivedSym = basisSym.setter(enclClass)
+      override def derivedSym = basisSym.setterIn(enclClass)
     }
     case class Field(tree: ValDef) extends DerivedFromValDef {
       def name       = tree.localName

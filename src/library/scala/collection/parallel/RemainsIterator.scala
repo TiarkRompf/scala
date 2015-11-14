@@ -40,7 +40,7 @@ private[collection] trait AugmentedIterableIterator[+T] extends RemainsIterator[
 
   /* accessors */
 
-  override def count(p: T => Boolean): Int = {
+  override def count(@plocal p: T => Boolean): Int = {
     var i = 0
     while (hasNext) if (p(next())) i += 1
     i
@@ -300,7 +300,7 @@ private[collection] trait AugmentedSeqIterator[+T] extends AugmentedIterableIter
     total
   }
 
-  override def indexWhere(pred: T => Boolean): Int = {
+  override def indexWhere(@plocal pred: T => Boolean): Int = {
     var i = 0
     var loop = true
     while (hasNext && loop) {

@@ -11,7 +11,7 @@ package scala
 import scala.collection.{ mutable, immutable, generic, SortedSetLike, AbstractSet }
 import java.lang.reflect.{ Modifier, Method => JMethod, Field => JField }
 import scala.reflect.NameTransformer._
-import java.util.regex.Pattern
+import scala.util.matching.Regex
 
 /** Defines a finite set of values specific to the enumeration. Typically
  *  these values enumerate all possible forms something can take and provide
@@ -58,13 +58,13 @@ abstract class Enumeration (initial: Int) extends Serializable {
 
   /* Note that `readResolve` cannot be private, since otherwise
      the JVM does not invoke it when deserializing subclasses. */
-  protected def readResolve(): AnyRef = thisenum.getClass.getField(MODULE_INSTANCE_NAME).get(null)
+  protected def readResolve(): AnyRef = ESC.NO(thisenum.getClass.getField(MODULE_INSTANCE_NAME).get(null))
 
   /** The name of this enumeration.
    */
   override def toString =
     ((getClass.getName stripSuffix MODULE_SUFFIX_STRING split '.').last split
-       Pattern.quote(NAME_JOIN_STRING)).last
+       Regex.quote(NAME_JOIN_STRING)).last
 
   /** The mapping from the integer used to identify values to the actual
     * values. */
@@ -121,7 +121,8 @@ abstract class Enumeration (initial: Int) extends Serializable {
    * @throws   NoSuchElementException if no `Value` with a matching
    *           name is in this `Enumeration`
    */
-  final def withName(s: String): Value = values.find(_.toString == s).get
+  final def withName(s: String): Value = values.find(_.toString == s).getOrElse(
+    throw new NoSuchElementException(s"No value found for '$s'"))
 
   /** Creates a fresh value, part of this enumeration. */
   protected final def Value: Value = Value(nextId)
@@ -152,7 +153,7 @@ abstract class Enumeration (initial: Int) extends Serializable {
    */
   protected final def Value(i: Int, name: String): Value = new Val(i, name)
 
-  private def populateNameMap() {
+  private def populateNameMap(@local cc: CanThrow) {
     val fields = getClass.getDeclaredFields
     def isValDef(m: JMethod) = fields exists (fd => fd.getName == m.getName && fd.getType == m.getReturnType)
 
@@ -164,10 +165,10 @@ abstract class Enumeration (initial: Int) extends Serializable {
     methods foreach { m =>
       val name = m.getName
       // invoke method to obtain actual `Value` instance
-      val value = m.invoke(this).asInstanceOf[Value]
+      val value = ESC.THROW(m.invoke(this).asInstanceOf[Value])(cc)
       // verify that outer points to the correct Enumeration: ticket #3616.
       if (value.outerEnum eq thisenum) {
-        val id = Int.unbox(classOf[Val] getMethod "id" invoke value)
+        val id = ESC.THROW(Int.unbox(classOf[Val] getMethod "id" invoke value))(cc)
         nmap += ((id, name))
       }
     }
@@ -176,7 +177,7 @@ abstract class Enumeration (initial: Int) extends Serializable {
   /* Obtains the name for the value with id `i`. If no name is cached
    * in `nmap`, it populates `nmap` using reflection.
    */
-  private def nameOf(i: Int): String = synchronized { nmap.getOrElse(i, { populateNameMap() ; nmap(i) }) }
+  private def nameOf(i: Int)(@local cc: CanThrow): String = synchronized { nmap.getOrElse(i, { populateNameMap(cc) ; nmap(i) }) }
 
   /** The type of the enumerated values. */
   @SerialVersionUID(7091335633555234129L)
@@ -219,8 +220,9 @@ abstract class Enumeration (initial: Int) extends Serializable {
     def id = i
     override def toString() =
       if (name != null) name
-      else try thisenum.nameOf(i)
+      else try ESC.TRY(cc=>thisenum.nameOf(i)(cc))
       catch { case _: NoSuchElementException => "<Invalid enum: no field for #" + i + ">" }
+      // ESC: catch Exception, and wrap in RuntimeException
 
     protected def readResolve(): AnyRef = {
       val enum = thisenum.readResolve().asInstanceOf[Enumeration]
@@ -239,6 +241,7 @@ abstract class Enumeration (initial: Int) extends Serializable {
    *
    *  @param nnIds The set of ids of values (adjusted so that the lowest value does
    *    not fall below zero), organized as a `BitSet`.
+   *  @define Coll `collection.immutable.SortedSet`
    */
   class ValueSet private[ValueSet] (private[this] var nnIds: immutable.BitSet)
   extends AbstractSet[Value]

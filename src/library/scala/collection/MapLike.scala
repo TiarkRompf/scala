@@ -222,7 +222,7 @@ self =>
    *  but it might be overridden in subclasses.
    *
    *  @param key the given key value for which a binding is missing.
-   *  @throws `NoSuchElementException`
+   *  @throws NoSuchElementException
    */
   def default(key: A): B =
     throw new NoSuchElementException("key not found: " + key)
@@ -312,7 +312,7 @@ self =>
    *  @param p    A predicate over key-value pairs
    *  @return     A new map containing elements not satisfying the predicate.
    */
-  override def filterNot(p: ((A, B)) => Boolean): This = {
+  override def filterNot(@plocal p: ((A, B)) => Boolean): This = {
     var res: This = repr
     for (kv <- this)
       if (p(kv)) res = (res - kv._1).asInstanceOf[This] // !!! concrete overrides abstract problem

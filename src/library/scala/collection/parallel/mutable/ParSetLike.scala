@@ -6,7 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala
 package collection
 package parallel.mutable
@@ -22,6 +21,8 @@ import scala.collection.generic.Shrinkable
  *  $sideeffects
  *
  *  @tparam T    the element type of the set
+ *  @define Coll `mutable.ParSet`
+ *  @define coll mutable parallel set
  *
  *  @author Aleksandar Prokopec
  *  @since 2.9
@@ -49,43 +50,3 @@ self =>
 
   // note: should not override toSet
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

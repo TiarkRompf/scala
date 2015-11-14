@@ -13,13 +13,12 @@ import scala.collection.{ mutable, immutable }
 import scala.collection.mutable.{ ListBuffer, Buffer }
 import scala.tools.nsc.symtab._
 import scala.annotation.switch
-import PartialFunction._
 
 /**
  *  @author  Iulian Dragos
  *  @version 1.0
  */
-abstract class GenICode extends SubComponent  {
+abstract class GenICode extends SubComponent {
   import global._
   import icodes._
   import icodes.opcodes._
@@ -29,6 +28,9 @@ abstract class GenICode extends SubComponent  {
     isUniversalEqualityOp, isReferenceEqualityOp
   }
   import platform.isMaybeBoxed
+
+  private val bCodeICodeCommon: jvm.BCodeICodeCommon[global.type] = new jvm.BCodeICodeCommon(global)
+  import bCodeICodeCommon._
 
   val phaseName = "icode"
 
@@ -46,8 +48,10 @@ abstract class GenICode extends SubComponent  {
     var unit: CompilationUnit = NoCompilationUnit
 
     override def run() {
-      scalaPrimitives.init()
-      classes.clear()
+      if (!settings.isBCodeActive) {
+        scalaPrimitives.init()
+        classes.clear()
+      }
       super.run()
     }
 
@@ -72,7 +76,7 @@ abstract class GenICode extends SubComponent  {
      *  it is the host class; otherwise the symbol's owner.
      */
     def findHostClass(selector: Type, sym: Symbol) = selector member sym.name match {
-      case NoSymbol   => log(s"Rejecting $selector as host class for $sym") ; sym.owner
+      case NoSymbol   => debuglog(s"Rejecting $selector as host class for $sym") ; sym.owner
       case _          => selector.typeSymbol
     }
 
@@ -676,7 +680,7 @@ abstract class GenICode extends SubComponent  {
                 val dims = arr.dimensions
                 var elemKind = arr.elementKind
                 if (args.length > dims)
-                  unit.error(tree.pos, "too many arguments for array constructor: found " + args.length +
+                  reporter.error(tree.pos, "too many arguments for array constructor: found " + args.length +
                              " but array has only " + dims + " dimension(s)")
                 if (args.length != dims)
                   for (i <- args.length until dims) elemKind = ARRAY(elemKind)
@@ -702,7 +706,7 @@ abstract class GenICode extends SubComponent  {
           }
           genLoadApply3
 
-        case Apply(fun @ _, List(expr)) if (definitions.isBox(fun.symbol)) =>
+        case Apply(fun @ _, List(expr)) if currentRun.runDefinitions.isBox(fun.symbol) =>
           def genLoadApply4 = {
             debuglog("BOX : " + fun.symbol.fullName)
             val ctx1 = genLoad(expr, ctx, toTypeKind(expr.tpe))
@@ -721,7 +725,7 @@ abstract class GenICode extends SubComponent  {
           }
           genLoadApply4
 
-        case Apply(fun @ _, List(expr)) if (definitions.isUnbox(fun.symbol)) =>
+        case Apply(fun @ _, List(expr)) if (currentRun.runDefinitions.isUnbox(fun.symbol)) =>
           debuglog("UNBOX : " + fun.symbol.fullName)
           val ctx1 = genLoad(expr, ctx, toTypeKind(expr.tpe))
           val boxType = toTypeKind(fun.symbol.owner.linkedClassOfClass.tpe)
@@ -739,7 +743,7 @@ abstract class GenICode extends SubComponent  {
                 resolveForwardLabel(ctx.defdef, ctx, sym)
                 ctx.labels.get(sym) match {
                   case Some(l) =>
-                    log("Forward jump for " + sym.fullLocationString + ": scan found label " + l)
+                    debuglog("Forward jump for " + sym.fullLocationString + ": scan found label " + l)
                     l
                   case _       =>
                     abort("Unknown label target: " + sym + " at: " + (fun.pos) + ": ctx: " + ctx)
@@ -793,10 +797,7 @@ abstract class GenICode extends SubComponent  {
                 case _ =>
               }
               ctx1.bb.emit(cm, tree.pos)
-
-              if (sym == ctx1.method.symbol) {
-                ctx1.method.recursive = true
-              }
+              ctx1.method.updateRecursive(sym)
               generatedType =
                 if (sym.isClassConstructor) UNIT
                 else toTypeKind(sym.info.resultType)
@@ -845,7 +846,7 @@ abstract class GenICode extends SubComponent  {
             val sym = tree.symbol
             generatedType = toTypeKind(sym.info)
             val hostClass = findHostClass(qualifier.tpe, sym)
-            log(s"Host class of $sym with qual $qualifier (${qualifier.tpe}) is $hostClass")
+            debuglog(s"Host class of $sym with qual $qualifier (${qualifier.tpe}) is $hostClass")
             val qualSafeToElide = treeInfo isQualifierSafeToElide qualifier
 
             def genLoadQualUnlessElidable: Context =
@@ -870,18 +871,25 @@ abstract class GenICode extends SubComponent  {
         case Ident(name) =>
           def genLoadIdent = {
             val sym = tree.symbol
-            if (!sym.isPackage) {
+            if (!sym.hasPackageFlag) {
               if (sym.isModule) {
                 genLoadModule(ctx, tree)
                 generatedType = toTypeKind(sym.info)
               } else {
-                try {
-                  val Some(l) = ctx.method.lookupLocal(sym)
-                  ctx.bb.emit(LOAD_LOCAL(l), tree.pos)
-                  generatedType = l.kind
-                } catch {
-                  case ex: MatchError =>
-                    abort("symbol " + sym + " does not exist in " + ctx.method)
+                ctx.method.lookupLocal(sym) match {
+                  case Some(l) =>
+                    ctx.bb.emit(LOAD_LOCAL(l), tree.pos)
+                    generatedType = l.kind
+                  case None =>
+                    val saved = settings.uniqid
+                    settings.uniqid.value = true
+                    try {
+                      val methodCode = unit.body.collect { case dd: DefDef
+                        if dd.symbol == ctx.method.symbol => showCode(dd);
+                      }.headOption.getOrElse("<unknown>")
+                      abort(s"symbol $sym does not exist in ${ctx.method}, which contains locals ${ctx.method.locals.mkString(",")}. \nMethod code: $methodCode")
+                    }
+                    finally settings.uniqid.value = saved
                 }
               }
             }
@@ -1010,8 +1018,16 @@ abstract class GenICode extends SubComponent  {
       }
 
       // emit conversion
-      if (generatedType != expectedType)
-        adapt(generatedType, expectedType, resCtx, tree.pos)
+      if (generatedType != expectedType) {
+        tree match {
+          case Literal(Constant(null)) if generatedType == NullReference && expectedType != UNIT =>
+            // literal null on the stack (as opposed to a boxed null, see SI-8233),
+            // we can bypass `adapt` which would otherwise emit a redundant [DROP, CONSTANT(null)]
+            // except one case: when expected type is UNIT (unboxed) where we need to emit just a DROP
+          case _ =>
+            adapt(generatedType, expectedType, resCtx, tree.pos)
+        }
+      }
 
       resCtx
     }
@@ -1026,7 +1042,7 @@ abstract class GenICode extends SubComponent  {
      * type Null is holding a null.
      */
     private def adaptNullRef(from: TypeKind, to: TypeKind, ctx: Context, pos: Position) {
-      log(s"GenICode#adaptNullRef($from, $to, $ctx, $pos)")
+      debuglog(s"GenICode#adaptNullRef($from, $to, $ctx, $pos)")
 
       // Don't need to adapt null to unit because we'll just drop it anyway. Don't
       // need to adapt to Object or AnyRef because the JVM is happy with
@@ -1046,7 +1062,7 @@ abstract class GenICode extends SubComponent  {
     private def adapt(from: TypeKind, to: TypeKind, ctx: Context, pos: Position) {
       // An awful lot of bugs explode here - let's leave ourselves more clues.
       // A typical example is an overloaded type assigned after typer.
-      log(s"GenICode#adapt($from, $to, $ctx, $pos)")
+      debuglog(s"GenICode#adapt($from, $to, $ctx, $pos)")
 
       def coerce(from: TypeKind, to: TypeKind) = ctx.bb.emit(CALL_PRIMITIVE(Conversion(from, to)), pos)
 
@@ -1061,11 +1077,14 @@ abstract class GenICode extends SubComponent  {
         case (NothingReference, _) =>
           ctx.bb.emit(THROW(ThrowableClass))
           ctx.bb.enterIgnoreMode()
+        case (NullReference, REFERENCE(_)) =>
+          // SI-8223 we can't assume that the stack contains a `null`, it might contain a Null$
+          ctx.bb.emit(Seq(DROP(from), CONSTANT(Constant(null))))
         case _ if from isAssignabledTo to =>
           ()
         case (_, UNIT) =>
           ctx.bb.emit(DROP(from), pos)
-        // otherwise we'd better be doing a primtive -> primitive coercion or there's a problem
+        // otherwise we'd better be doing a primitive -> primitive coercion or there's a problem
         case _ if !from.isRefOrArrayType && !to.isRefOrArrayType =>
           coerce(from, to)
         case _ =>
@@ -1316,13 +1335,6 @@ abstract class GenICode extends SubComponent  {
         List(tree)
     }
 
-    /** Some useful equality helpers.
-     */
-    def isNull(t: Tree) = cond(t) { case Literal(Constant(null)) => true }
-
-    /* If l or r is constant null, returns the other ; otherwise null */
-    def ifOneIsNull(l: Tree, r: Tree) = if (isNull(l)) r else if (isNull(r)) l else null
-
     /**
      * Find the label denoted by `lsym` and enter it in context `ctx`.
      *
@@ -1419,11 +1431,18 @@ abstract class GenICode extends SubComponent  {
           def genZandOrZor(and: Boolean): Boolean = {
             val ctxInterm = ctx.newBlock()
 
-            val branchesReachable = if (and) genCond(lhs, ctx, ctxInterm, elseCtx)
+            val lhsBranchesReachable = if (and) genCond(lhs, ctx, ctxInterm, elseCtx)
             else genCond(lhs, ctx, thenCtx, ctxInterm)
-            ctxInterm.bb killUnless branchesReachable
+            // If lhs is known to throw, we can kill the just created ctxInterm.
+            ctxInterm.bb killUnless lhsBranchesReachable
 
-            genCond(rhs, ctxInterm, thenCtx, elseCtx)
+            val rhsBranchesReachable = genCond(rhs, ctxInterm, thenCtx, elseCtx)
+
+            // Reachable means "it does not always throw", i.e. "it might not throw".
+            // In an expression (a && b) or (a || b), the b branch might not be evaluated.
+            // Such an expression is therefore known to throw only if both expressions throw. Or,
+            // successors are reachable if either of the two is reachable (SI-8625).
+            lhsBranchesReachable || rhsBranchesReachable
           }
           def genRefEq(isEq: Boolean) = {
             val f = genEqEqPrimitive(lhs, rhs, ctx) _
@@ -1479,26 +1498,18 @@ abstract class GenICode extends SubComponent  {
 
       if (mustUseAnyComparator) {
         // when -optimise is on we call the @inline-version of equals, found in ScalaRunTime
-        val equalsMethod =
+        val equalsMethod: Symbol = {
           if (!settings.optimise) {
-            def default = platform.externalEquals
-            platform match {
-              case x: JavaPlatform =>
-                import x._
-                  if (l.tpe <:< BoxedNumberClass.tpe) {
-                    if (r.tpe <:< BoxedNumberClass.tpe) externalEqualsNumNum
-                    else if (r.tpe <:< BoxedCharacterClass.tpe) externalEqualsNumChar
-                    else externalEqualsNumObject
-                  }
-                  else default
-
-              case _ => default
-            }
-          }
-          else {
+            if (l.tpe <:< BoxedNumberClass.tpe) {
+              if (r.tpe <:< BoxedNumberClass.tpe) platform.externalEqualsNumNum
+              else if (r.tpe <:< BoxedCharacterClass.tpe) platform.externalEqualsNumObject // will be externalEqualsNumChar in 2.12, SI-9030
+              else platform.externalEqualsNumObject
+            } else platform.externalEquals
+          } else {
             ctx.bb.emit(LOAD_MODULE(ScalaRunTimeModule))
             getMember(ScalaRunTimeModule, nme.inlinedEquals)
           }
+        }
 
         val ctx1 = genLoad(l, ctx, ObjectReference)
         val ctx2 = genLoad(r, ctx1, ObjectReference)
@@ -1521,6 +1532,23 @@ abstract class GenICode extends SubComponent  {
           val ctx1 = genLoad(l, ctx, ObjectReference)
           val branchesReachable = !ctx1.bb.ignore
           ctx1.bb emitOnly CZJUMP(thenCtx.bb, elseCtx.bb, EQ, ObjectReference)
+          branchesReachable
+        } else if (isNonNullExpr(l)) {
+          // Avoid null check if L is statically non-null.
+          //
+          // "" == expr -> "".equals(expr)
+          // Nil == expr -> Nil.equals(expr)
+          //
+          // Common enough (through pattern matching) to treat this specially here rather than
+          // hoping that -Yconst-opt is enabled. The impossible branches for null checks lead
+          // to spurious "branch not covered" warnings in Jacoco code coverage.
+          var ctx1 = genLoad(l, ctx, ObjectReference)
+          val branchesReachable = !ctx1.bb.ignore
+          ctx1 = genLoad(r, ctx1, ObjectReference)
+          ctx1.bb emitOnly(
+            CALL_METHOD(Object_equals, Dynamic),
+            CZJUMP(thenCtx.bb, elseCtx.bb, NE, BOOL)
+          )
           branchesReachable
         } else {
           val eqEqTempLocal = getTempLocal
@@ -2080,7 +2108,7 @@ abstract class GenICode extends SubComponent  {
     /**
      * Represent a label in the current method code. In order
      * to support forward jumps, labels can be created without
-     * having a deisgnated target block. They can later be attached
+     * having a designated target block. They can later be attached
      * by calling `anchor`.
      */
     class Label(val symbol: Symbol) {

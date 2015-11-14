@@ -145,7 +145,7 @@ self =>
       }
     }
 
-    override def count(p: T => Boolean) = {
+    override def count(@plocal p: T => Boolean) = {
       val c = count_quick(p, arr, until, i)
       i = until
       c
@@ -213,7 +213,7 @@ self =>
         prod
     }
 
-    override def forall(p: T => Boolean): Boolean = {
+    override def forall(@plocal p: T => Boolean): Boolean = {
       if (isAborted) return false
 
       var all = true
@@ -242,7 +242,7 @@ self =>
       true
     }
 
-    override def exists(p: T => Boolean): Boolean = {
+    override def exists(@plocal p: T => Boolean): Boolean = {
       if (isAborted) return true
 
       var some = false
@@ -270,7 +270,7 @@ self =>
       false
     }
 
-    override def find(p: T => Boolean): Option[T] = {
+    override def find(@plocal p: T => Boolean): Option[T] = {
       if (isAborted) return None
 
       var r: Option[T] = None
@@ -326,7 +326,7 @@ self =>
       endpos - startpos
     }
 
-    override def indexWhere(pred: T => Boolean): Int = {
+    override def indexWhere(@plocal pred: T => Boolean): Int = {
       val r = indexWhere_quick(pred, arr, until, i)
       val ret = if (r != -1) r - i else r
       i = until
@@ -668,11 +668,11 @@ self =>
   /* serialization */
 
   private def writeObject(out: java.io.ObjectOutputStream) {
-    out.defaultWriteObject
+    ESC.NO{out.defaultWriteObject}
   }
 
   private def readObject(in: java.io.ObjectInputStream) {
-    in.defaultReadObject
+    ESC.NO{in.defaultReadObject}
 
     // get raw array from arrayseq
     array = arrayseq.array.asInstanceOf[Array[Any]]

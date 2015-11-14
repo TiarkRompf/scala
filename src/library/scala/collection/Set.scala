@@ -26,6 +26,8 @@ trait Set[A] extends (A => Boolean)
                 with GenSet[A]
                 with GenericSetTemplate[A, Set]
                 with SetLike[A, Set[A]] {
+  override protected type LT = Any
+
   override def companion: GenericCompanion[Set] = Set
 
   override def seq: Set[A] = this
@@ -44,4 +46,4 @@ object Set extends SetFactory[Set] {
 }
 
 /** Explicit instantiation of the `Set` trait to reduce class file size in subclasses. */
-private[scala] abstract class AbstractSet[A] extends AbstractIterable[A] with Set[A]
+abstract class AbstractSet[A] extends AbstractIterable[A] with Set[A]

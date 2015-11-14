@@ -86,7 +86,7 @@ object Test extends App {
     def f(a: Object) = "first"
     val f: String => String = a => "second"
   }
-  println(t5.f(new Sub1())) // firsst
+  println(t5.f(new Sub1())) // first
   println(t5.f("dfklj"))    // second
 
   object t6 {
@@ -400,6 +400,10 @@ object Test extends App {
   case class C4441b()()
   C4441a().copy()
   C4441b()().copy()()
+
+  // SI-8117
+  def f8177(a: Int = 0, b: Int = 0, c: Int = 0) = s"$a $b $c"
+  println(f8177(a = 1, 1))
 
   // DEFINITIONS
   def test1(a: Int, b: String) = println(a +": "+ b)

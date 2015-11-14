@@ -1,8 +1,6 @@
 Type in expressions to have them evaluated.
 Type :help for more information.
 
-scala> 
-
 scala> scala> 999l
 
 // Detected repl transcript paste: ctrl-D to finish.
@@ -31,7 +29,6 @@ res9: Int = 6
 
 scala> x.length + res5
 res10: Int = 12
-
 // Replaying 8 commands from transcript.
 
 scala> 999l
@@ -47,7 +44,7 @@ scala> res5 + res6
 res1: Int = 690
 
 scala> val x = dingus
-<console>:7: error: not found: value dingus
+<console>:10: error: not found: value dingus
        val x = dingus
                ^
 
@@ -61,4 +58,4 @@ scala> x.length + res5
 res3: Int = 129
 
 
-scala> 
+scala> :quit

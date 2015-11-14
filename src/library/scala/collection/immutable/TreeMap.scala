@@ -6,8 +6,6 @@
 **                          |/                                          **
 \*                                                                      */
 
-
-
 package scala
 package collection
 package immutable
@@ -46,6 +44,7 @@ object TreeMap extends ImmutableSortedMapFactory[TreeMap] {
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
+@deprecatedInheritance("The implementation details of immutable tree maps make inheriting from them unwise.", "2.11.0")
 class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Ordering[A])
   extends SortedMap[A, B]
      with SortedMapLike[A, B, TreeMap[A, B]]
@@ -102,8 +101,8 @@ class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Orderi
     else new TreeMap(RB.slice(tree, from, until))
   }
 
-  override def dropRight(n: Int) = take(size - n)
-  override def takeRight(n: Int) = drop(size - n)
+  override def dropRight(n: Int) = take(size - math.max(n, 0))
+  override def takeRight(n: Int) = drop(size - math.max(n, 0))
   override def splitAt(n: Int) = (take(n), drop(n))
 
   private[this] def countWhile(p: ((A, B)) => Boolean): Int = {
@@ -112,9 +111,9 @@ class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Orderi
     while (it.hasNext && p(it.next())) result += 1
     result
   }
-  override def dropWhile(p: ((A, B)) => Boolean) = drop(countWhile(p))
-  override def takeWhile(p: ((A, B)) => Boolean) = take(countWhile(p))
-  override def span(p: ((A, B)) => Boolean) = splitAt(countWhile(p))
+  override def dropWhile(@plocal p: ((A, B)) => Boolean) = drop(countWhile(p))
+  override def takeWhile(@plocal p: ((A, B)) => Boolean) = take(countWhile(p))
+  override def span(@plocal p: ((A, B)) => Boolean) = splitAt(countWhile(p))
 
   /** A factory to create empty maps of the same type of keys.
    */
@@ -194,7 +193,7 @@ class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Orderi
 
   override def keysIterator: Iterator[A] = RB.keysIterator(tree)
   override def keysIteratorFrom(start: A): Iterator[A] = RB.keysIterator(tree, Some(start))
-  
+
   override def valuesIterator: Iterator[B] = RB.valuesIterator(tree)
   override def valuesIteratorFrom(start: A): Iterator[B] = RB.valuesIterator(tree, Some(start))
 
@@ -203,7 +202,3 @@ class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Orderi
 
   override def foreach[U](f : ((A,B)) =>  U) = RB.foreach(tree, f)
 }
-
-
-
-

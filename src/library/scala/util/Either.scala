@@ -216,7 +216,7 @@ object Either {
    * r.merge: Seq[Int] // Vector(1)
    * }}}
    */
-  implicit class MergeableEither[A](val x: Either[A, A]) extends AnyVal {
+  implicit class MergeableEither[A](private val x: Either[A, A]) extends AnyVal {
     def merge: A = x match {
       case Left(a)  => a
       case Right(a) => a
@@ -274,7 +274,7 @@ object Either {
    */
   final case class LeftProjection[+A, +B](e: Either[A, B]) {
     /**
-     * Returns the value from this `Left` or throws `Predef.NoSuchElementException`
+     * Returns the value from this `Left` or throws `java.util.NoSuchElementException`
      * if this is a `Right`.
      *
      * {{{
@@ -282,7 +282,7 @@ object Either {
      * Right(12).left.get // NoSuchElementException
      * }}}
      *
-     * @throws Predef.NoSuchElementException if the projection is [[scala.util.Right]]
+     * @throws java.util.NoSuchElementException if the projection is [[scala.util.Right]]
      */
     def get = e match {
       case Left(a) => a
@@ -440,14 +440,14 @@ object Either {
 
     /**
      * Returns the value from this `Right` or throws
-     * `Predef.NoSuchElementException` if this is a `Left`.
+     * `java.util.NoSuchElementException` if this is a `Left`.
      *
      * {{{
      * Right(12).right.get // 12
      * Left(12).right.get // NoSuchElementException
      * }}}
      *
-     * @throws Predef.NoSuchElementException if the projection is `Left`.
+     * @throws java.util.NoSuchElementException if the projection is `Left`.
      */
     def get = e match {
       case Left(_) =>  throw new NoSuchElementException("Either.right.value on Left")

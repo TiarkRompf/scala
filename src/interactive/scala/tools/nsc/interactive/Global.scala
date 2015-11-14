@@ -13,17 +13,23 @@ import scala.tools.nsc.io.AbstractFile
 import scala.reflect.internal.util.{ SourceFile, BatchSourceFile, Position, NoPosition }
 import scala.tools.nsc.reporters._
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.doc.ScaladocAnalyzer
 import scala.tools.nsc.typechecker.Analyzer
 import symtab.Flags.{ACCESSOR, PARAMACCESSOR}
 import scala.annotation.{ elidable, tailrec }
 import scala.language.implicitConversions
+import scala.tools.nsc.typechecker.Typers
+import scala.util.control.Breaks._
 
-trait InteractiveScaladocAnalyzer extends InteractiveAnalyzer with ScaladocAnalyzer {
-  val global : Global
-  override def newTyper(context: Context) = new Typer(context) with InteractiveTyper with ScaladocTyper {
-    override def canAdaptConstantTypeToLiteral = false
-  }
+/**
+ * This trait allows the IDE to have an instance of the PC that
+ * does not clear the comments table at every new typer run (those
+ * being many and close between in this context).
+ */
+
+trait CommentPreservingTypers extends Typers {
+  self: Analyzer =>
+
+  override def resetDocComments() = {}
 }
 
 trait InteractiveAnalyzer extends Analyzer {
@@ -32,7 +38,6 @@ trait InteractiveAnalyzer extends Analyzer {
 
   override def newTyper(context: Context): InteractiveTyper = new Typer(context) with InteractiveTyper
   override def newNamer(context: Context): InteractiveNamer = new Namer(context) with InteractiveNamer
-  override protected def newPatternMatching = false
 
   trait InteractiveTyper extends Typer {
     override def canAdaptConstantTypeToLiteral = false
@@ -59,7 +64,9 @@ trait InteractiveAnalyzer extends Analyzer {
     // that case the definitions that were already attributed as
     // well as any default parameters of such methods need to be
     // re-entered in the current scope.
-    override def enterExistingSym(sym: Symbol): Context = {
+    //
+    // Tested in test/files/presentation/t8941b
+    override def enterExistingSym(sym: Symbol, tree: Tree): Context = {
       if (sym != null && sym.owner.isTerm) {
         enterIfNotThere(sym)
         if (sym.isLazy)
@@ -67,8 +74,17 @@ trait InteractiveAnalyzer extends Analyzer {
 
         for (defAtt <- sym.attachments.get[DefaultsOfLocalMethodAttachment])
           defAtt.defaultGetters foreach enterIfNotThere
+      } else if (sym != null && sym.isClass && sym.isImplicit) {
+        val owningInfo = sym.owner.info
+        val existingDerivedSym = owningInfo.decl(sym.name.toTermName).filter(sym => sym.isSynthetic && sym.isMethod)
+        existingDerivedSym.alternatives foreach (owningInfo.decls.unlink)
+        val defTree = tree match {
+          case dd: DocDef => dd.definition // See SI-9011, Scala IDE's presentation compiler incorporates ScalaDocGlobal with InterativeGlobal, so we have to unwrap DocDefs.
+          case _ => tree
+        }
+        enterImplicitWrapper(defTree.asInstanceOf[ClassDef])
       }
-      super.enterExistingSym(sym)
+      super.enterExistingSym(sym, tree)
     }
     override def enterIfNotThere(sym: Symbol) {
       val scope = context.scope
@@ -83,7 +99,6 @@ trait InteractiveAnalyzer extends Analyzer {
   }
 }
 
-
 /** The main class of the presentation compiler in an interactive environment such as an IDE
  */
 class Global(settings: Settings, _reporter: Reporter, projectName: String = "") extends {
@@ -96,10 +111,12 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
   with CompilerControl
   with ContextTrees
   with RichCompilationUnits
-  with ScratchPadMaker
   with Picklers {
 
   import definitions._
+
+  if (!settings.Ymacroexpand.isSetByUser)
+    settings.Ymacroexpand.value = settings.MacroExpand.Discard
 
   val debugIDE: Boolean = settings.YpresentationDebug.value
   val verboseIDE: Boolean = settings.YpresentationVerbose.value
@@ -115,8 +132,8 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     else NullLogger
 
   import log.logreplay
-  debugLog("logger: " + log.getClass + " writing to " + (new java.io.File(logName)).getAbsolutePath)
-  debugLog("classpath: "+classPath)
+  debugLog(s"logger: ${log.getClass} writing to ${(new java.io.File(logName)).getAbsolutePath}")
+  debugLog(s"classpath: $classPath")
 
   private var curTime = System.nanoTime
   private def timeStep = {
@@ -135,11 +152,10 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
 
   // don't keep the original owner in presentation compiler runs
   // (the map will grow indefinitely, and the only use case is the backend)
-  override protected def saveOriginalOwner(sym: Symbol) { }
-  override protected def originalEnclosingMethod(sym: Symbol) =
-    abort("originalOwner is not kept in presentation compiler runs.")
+  override def defineOriginalOwner(sym: Symbol, owner: Symbol): Unit = { }
 
   override def forInteractive = true
+  override protected def synchronizeNames = true
 
   override def newAsSeenFromMap(pre: Type, clazz: Symbol): AsSeenFromMap =
     new InteractiveAsSeenFromMap(pre, clazz)
@@ -299,7 +315,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
   private val NoResponse: Response[_] = new Response[Any]
 
   /** The response that is currently pending, i.e. the compiler
-   *  is working on providing an asnwer for it.
+   *  is working on providing an answer for it.
    */
   private var pendingResponse: Response[_] = NoResponse
 
@@ -322,7 +338,12 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
    *  @param  result   The transformed node
    */
   override def signalDone(context: Context, old: Tree, result: Tree) {
-    if (interruptsEnabled && analyzer.lockedCount == 0) {
+    val canObserveTree = (
+         interruptsEnabled
+      && analyzer.lockedCount == 0
+      && !context.bufferErrors // SI-7558 look away during exploratory typing in "silent mode"
+    )
+    if (canObserveTree) {
       if (context.unit.exists &&
           result.pos.isOpaqueRange &&
           (result.pos includes context.unit.targetPos)) {
@@ -333,14 +354,16 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
         }
         throw new TyperResult(located)
       }
-      try {
-        checkForMoreWork(old.pos)
-      } catch {
-        case ex: ValidateException => // Ignore, this will have been reported elsewhere
-          debugLog("validate exception caught: "+ex)
-        case ex: Throwable =>
-          log.flush()
-          throw ex
+      else {
+        try {
+          checkForMoreWork(old.pos)
+        } catch {
+          case ex: ValidateException => // Ignore, this will have been reported elsewhere
+            debugLog("validate exception caught: "+ex)
+          case ex: Throwable =>
+            log.flush()
+            throw ex
+        }
       }
     }
   }
@@ -365,13 +388,18 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
    */
   override def registerTopLevelSym(sym: Symbol) { currentTopLevelSyms += sym }
 
+  protected type SymbolLoadersInInteractive = GlobalSymbolLoaders {
+    val global: Global.this.type
+    val platform: Global.this.platform.type
+  }
   /** Symbol loaders in the IDE parse all source files loaded from a package for
    *  top-level idents. Therefore, we can detect top-level symbols that have a name
    *  different from their source file
    */
-  override lazy val loaders: SymbolLoaders { val global: Global.this.type } = new BrowsingLoaders {
+  override lazy val loaders: SymbolLoadersInInteractive = new {
     val global: Global.this.type = Global.this
-  }
+    val platform: Global.this.platform.type = Global.this.platform
+  } with BrowsingLoaders
 
   // ----------------- Polling ---------------------------------------
 
@@ -396,85 +424,91 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
    *
    */
   private[interactive] def pollForWork(pos: Position) {
-    if (!interruptsEnabled) return
-    if (pos == NoPosition || nodesSeen % yieldPeriod == 0)
-      Thread.`yield`()
+    var loop: Boolean = true
+    while (loop) {
+      breakable{
+        loop = false
+        if (!interruptsEnabled) return
+        if (pos == NoPosition || nodesSeen % yieldPeriod == 0)
+          Thread.`yield`()
 
-    def nodeWithWork(): Option[WorkEvent] =
-      if (scheduler.moreWork || pendingResponse.isCancelled) Some(new WorkEvent(nodesSeen, System.currentTimeMillis))
-      else None
+        def nodeWithWork(): Option[WorkEvent] =
+          if (scheduler.moreWork || pendingResponse.isCancelled) Some(new WorkEvent(nodesSeen, System.currentTimeMillis))
+          else None
 
-    nodesSeen += 1
-    logreplay("atnode", nodeWithWork()) match {
-      case Some(WorkEvent(id, _)) =>
-        debugLog("some work at node "+id+" current = "+nodesSeen)
-//        assert(id >= nodesSeen)
-        moreWorkAtNode = id
-      case None =>
-    }
+        nodesSeen += 1
+        logreplay("atnode", nodeWithWork()) match {
+          case Some(WorkEvent(id, _)) =>
+            debugLog("some work at node "+id+" current = "+nodesSeen)
+          //        assert(id >= nodesSeen)
+          moreWorkAtNode = id
+          case None =>
+        }
 
-    if (nodesSeen >= moreWorkAtNode) {
+        if (nodesSeen >= moreWorkAtNode) {
 
-      logreplay("asked", scheduler.pollInterrupt()) match {
-        case Some(ir) =>
-          try {
-            interruptsEnabled = false
-            debugLog("ask started"+timeStep)
-            ir.execute()
-          } finally {
-            debugLog("ask finished"+timeStep)
-            interruptsEnabled = true
-          }
-          pollForWork(pos)
-        case _ =>
-      }
-
-      if (logreplay("cancelled", pendingResponse.isCancelled)) {
-        throw CancelException
-      }
-
-      logreplay("exception thrown", scheduler.pollThrowable()) match {
-        case Some(ex: FreshRunReq) =>
-          newTyperRun()
-          minRunId = currentRunId
-          demandNewCompilerRun()
-
-        case Some(ShutdownReq) =>
-          scheduler.synchronized { // lock the work queue so no more items are posted while we clean it up
-            val units = scheduler.dequeueAll {
-              case item: WorkItem => Some(item.raiseMissing())
-              case _ => Some(())
-            }
-
-            // don't forget to service interrupt requests
-            scheduler.dequeueAllInterrupts(_.execute())
-
-            debugLog("ShutdownReq: cleaning work queue (%d items)".format(units.size))
-            debugLog("Cleanup up responses (%d loadedType pending, %d parsedEntered pending)"
-                .format(waitLoadedTypeResponses.size, getParsedEnteredResponses.size))
-            checkNoResponsesOutstanding()
-
-            log.flush()
-            scheduler = new NoWorkScheduler
-            throw ShutdownReq
+          logreplay("asked", scheduler.pollInterrupt()) match {
+            case Some(ir) =>
+              try {
+                interruptsEnabled = false
+                debugLog("ask started"+timeStep)
+                ir.execute()
+              } finally {
+                debugLog("ask finished"+timeStep)
+                interruptsEnabled = true
+              }
+            loop = true; break
+            case _ =>
           }
 
-        case Some(ex: Throwable) => log.flush(); throw ex
-        case _ =>
-      }
-
-      lastWasReload = false
-
-      logreplay("workitem", scheduler.nextWorkItem()) match {
-        case Some(action) =>
-          try {
-            debugLog("picked up work item at "+pos+": "+action+timeStep)
-            action()
-            debugLog("done with work item: "+action)
-          } finally {
-            debugLog("quitting work item: "+action+timeStep)
+          if (logreplay("cancelled", pendingResponse.isCancelled)) {
+            throw CancelException
           }
-        case None =>
+
+          logreplay("exception thrown", scheduler.pollThrowable()) match {
+            case Some(ex: FreshRunReq) =>
+              newTyperRun()
+            minRunId = currentRunId
+            demandNewCompilerRun()
+
+            case Some(ShutdownReq) =>
+              scheduler.synchronized { // lock the work queue so no more items are posted while we clean it up
+                val units = scheduler.dequeueAll {
+                  case item: WorkItem => Some(item.raiseMissing())
+                  case _ => Some(())
+                }
+
+                // don't forget to service interrupt requests
+                scheduler.dequeueAllInterrupts(_.execute())
+
+                debugLog("ShutdownReq: cleaning work queue (%d items)".format(units.size))
+                debugLog("Cleanup up responses (%d loadedType pending, %d parsedEntered pending)"
+                         .format(waitLoadedTypeResponses.size, getParsedEnteredResponses.size))
+                checkNoResponsesOutstanding()
+
+                log.flush()
+                scheduler = new NoWorkScheduler
+                throw ShutdownReq
+              }
+
+            case Some(ex: Throwable) => log.flush(); throw ex
+            case _ =>
+          }
+
+          lastWasReload = false
+
+          logreplay("workitem", scheduler.nextWorkItem()) match {
+            case Some(action) =>
+              try {
+                debugLog("picked up work item at "+pos+": "+action+timeStep)
+                action()
+                debugLog("done with work item: "+action)
+              } finally {
+                debugLog("quitting work item: "+action+timeStep)
+              }
+            case None =>
+          }
+        }
       }
     }
   }
@@ -492,7 +526,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
   /** The current presentation compiler runner */
   @volatile private[interactive] var compileRunner: Thread = newRunnerThread()
 
-  /** Check that the currenyly executing thread is the presentation compiler thread.
+  /** Check that the currently executing thread is the presentation compiler thread.
    *
    *  Compiler initialization may happen on a different thread (signalled by globalPhase being NoPhase)
    */
@@ -509,7 +543,6 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     threadId += 1
     compileRunner = new PresentationCompilerThread(this, projectName)
     compileRunner.setDaemon(true)
-    compileRunner.start()
     compileRunner
   }
 
@@ -613,6 +646,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     unit.problems.clear()
     unit.body = EmptyTree
     unit.status = NotLoaded
+    unit.transformed.clear()
   }
 
   /** Parse unit and create a name index, unless this has already been done before */
@@ -709,7 +743,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     }
   }
 
-  private def reloadSource(source: SourceFile) {
+  private[interactive] def reloadSource(source: SourceFile) {
     val unit = new RichCompilationUnit(source)
     unitOfFile(source.file) = unit
     toBeRemoved -= source.file
@@ -758,7 +792,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
   }
 
   /** A fully attributed tree located at position `pos` */
-  private def typedTreeAt(pos: Position): Tree = getUnit(pos.source) match {
+  private[interactive] def typedTreeAt(pos: Position): Tree = getUnit(pos.source) match {
     case None =>
       reloadSources(List(pos.source))
       try typedTreeAt(pos)
@@ -931,7 +965,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
       singleType(qual.tpe, tree.symbol)
     case Import(expr, selectors) =>
       tree.symbol.info match {
-        case analyzer.ImportType(expr) => expr match {
+        case ImportType(expr) => expr match {
           case s@Select(qual, name) if treeInfo.admitsTypeSelection(expr) => singleType(qual.tpe, s.symbol)
           case i : Ident => i.tpe
           case _ => tree.tpe
@@ -995,7 +1029,11 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     val enclosing = new Members[ScopeMember]
     def addScopeMember(sym: Symbol, pre: Type, viaImport: Tree) =
       locals.add(sym, pre, implicitlyAdded = false) { (s, st) =>
-        new ScopeMember(s, st, context.isAccessible(s, pre, superAccess = false), viaImport)
+        // imported val and var are always marked as inaccessible, but they could be accessed through their getters. SI-7995
+        if (s.hasGetter)
+          new ScopeMember(s, st, context.isAccessible(s.getter, pre, superAccess = false), viaImport)
+        else
+          new ScopeMember(s, st, context.isAccessible(s, pre, superAccess = false), viaImport)
       }
     def localsToEnclosing() = {
       enclosing.addNonShadowed(locals)
@@ -1046,8 +1084,14 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
       case t                                             => t
     }
     val context = doLocateContext(pos)
+    val shouldTypeQualifier = tree0.tpe match {
+      case null           => true
+      case mt: MethodType => mt.isImplicit
+      case _              => false
+    }
+
     // TODO: guard with try/catch to deal with ill-typed qualifiers.
-    val tree = if (tree0.tpe eq null) analyzer newTyper context typedQualifier tree0 else tree0
+    val tree = if (shouldTypeQualifier) analyzer newTyper context typedQualifier tree0 else tree0
 
     debugLog("typeMembers at "+tree+" "+tree.tpe)
     val superAccess = tree.isInstanceOf[Super]
@@ -1075,7 +1119,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     val pre = stabilizedType(tree)
 
     val ownerTpe = tree.tpe match {
-      case analyzer.ImportType(expr) => expr.tpe
+      case ImportType(expr) => expr.tpe
       case null => pre
       case MethodType(List(), rtpe) => rtpe
       case _ => tree.tpe
@@ -1094,7 +1138,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
       for (view <- applicableViews) {
         val vtree = viewApply(view)
         val vpre = stabilizedType(vtree)
-        for (sym <- vtree.tpe.members) {
+        for (sym <- vtree.tpe.members if sym.isTerm) {
           addTypeMember(sym, vpre, inherited = false, view.tree.symbol)
         }
       }
@@ -1104,7 +1148,7 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
   }
 
   /** Implements CompilerControl.askLoadedTyped */
-  private[interactive] def waitLoadedTyped(source: SourceFile, response: Response[Tree], onSameThread: Boolean = true) {
+  private[interactive] def waitLoadedTyped(source: SourceFile, response: Response[Tree], keepLoaded: Boolean = false, onSameThread: Boolean = true) {
     getUnit(source) match {
       case Some(unit) =>
         if (unit.isUpToDate) {
@@ -1122,7 +1166,10 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
       case None =>
         debugLog("load unit and type")
         try reloadSources(List(source))
-        finally waitLoadedTyped(source, response, onSameThread)
+        finally {
+          waitLoadedTyped(source, response, onSameThread)
+          if (!keepLoaded) removeUnitOf(source)
+        }
     }
   }
 
@@ -1144,25 +1191,13 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     }
   }
 
-  /** Parses and enters given source file, stroring parse tree in response */
+  /** Parses and enters given source file, storing parse tree in response */
   private def getParsedEnteredNow(source: SourceFile, response: Response[Tree]) {
     respond(response) {
       onUnitOf(source) { unit =>
         parseAndEnter(unit)
         unit.body
       }
-    }
-  }
-
-  @deprecated("SI-6458: Instrumentation logic will be moved out of the compiler.","2.10.0")
-  def getInstrumented(source: SourceFile, line: Int, response: Response[(String, Array[Char])]) {
-    try {
-      interruptsEnabled = false
-      respond(response) {
-        instrument(source, line)
-      }
-    } finally {
-      interruptsEnabled = true
     }
   }
 
@@ -1213,12 +1248,33 @@ class Global(settings: Settings, _reporter: Reporter, projectName: String = "") 
     }
   }
 
+  // We need to force a number of symbols that might be touched by a parser.
+  // Otherwise thread safety property of parseTree method would be violated.
+  protected def forceSymbolsUsedByParser(): Unit = {
+    val symbols =
+      Set(UnitClass, BooleanClass, ByteClass,
+          ShortClass, IntClass, LongClass, FloatClass,
+          DoubleClass, NilModule, ListClass) ++ TupleClass.seq
+    symbols.foreach(_.initialize)
+  }
+
+  forceSymbolsUsedByParser()
+
+  /** Start the compiler background thread and turn on thread confinement checks */
+  private def finishInitialization(): Unit = {
+    // this flag turns on `assertCorrectThread checks`
+    initializing = false
+
+    // Only start the thread if initialization was successful. A crash while forcing symbols (for example
+    // if the Scala library is not on the classpath) can leave running threads behind. See Scala IDE #1002016
+    compileRunner.start()
+  }
+
   /** The compiler has been initialized. Constructors are evaluated in textual order,
-   *  so this is set to true only after all super constructors and the primary constructor
+   *  if we reached here, all super constructors and the primary constructor
    *  have been executed.
    */
-  initializing = false
+  finishInitialization()
 }
 
 object CancelException extends Exception
-

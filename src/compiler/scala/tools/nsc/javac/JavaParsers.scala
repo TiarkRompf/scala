@@ -8,11 +8,12 @@
 package scala.tools.nsc
 package javac
 
-import scala.reflect.internal.util.OffsetPosition
 import scala.collection.mutable.ListBuffer
 import symtab.Flags
 import JavaTokens._
 import scala.language.implicitConversions
+import scala.reflect.internal.util.Position
+import scala.reflect.internal.util.ListOfNil
 
 trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
   val global : Global
@@ -26,10 +27,10 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
     def freshName(prefix: String): Name = freshTermName(prefix)
     def freshTermName(prefix: String): TermName = unit.freshTermName(prefix)
     def freshTypeName(prefix: String): TypeName = unit.freshTypeName(prefix)
-    def deprecationWarning(off: Int, msg: String) = unit.deprecationWarning(off, msg)
-    implicit def i2p(offset : Int) : Position = new OffsetPosition(unit.source, offset)
-    def warning(pos : Int, msg : String) : Unit = unit.warning(pos, msg)
-    def syntaxError(pos: Int, msg: String) : Unit = unit.error(pos, msg)
+    def deprecationWarning(off: Int, msg: String) = currentRun.reporting.deprecationWarning(off, msg)
+    implicit def i2p(offset : Int) : Position = Position.offset(unit.source, offset)
+    def warning(pos : Int, msg : String) : Unit = reporter.warning(pos, msg)
+    def syntaxError(pos: Int, msg: String) : Unit = reporter.error(pos, msg)
   }
 
   abstract class JavaParser extends ParserCommon {
@@ -118,14 +119,14 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
     def makeTemplate(parents: List[Tree], stats: List[Tree]) =
       Template(
         parents,
-        emptyValDef,
+        noSelfType,
         if (treeInfo.firstConstructor(stats) == EmptyTree) makeConstructor(List()) :: stats
         else stats)
 
     def makeSyntheticParam(count: Int, tpt: Tree): ValDef =
       makeParam(nme.syntheticParamName(count), tpt)
     def makeParam(name: String, tpt: Tree): ValDef =
-      makeParam(name: TermName, tpt)
+      makeParam(TermName(name), tpt)
     def makeParam(name: TermName, tpt: Tree): ValDef =
       ValDef(Modifiers(Flags.JAVA | Flags.PARAM), name, tpt, EmptyTree)
 
@@ -190,7 +191,7 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
         case GTGTGT   => GTGT
         case GTGTEQ   => GTEQ
         case GTGT     => GT
-        case GTEQ     => ASSIGN
+        case GTEQ     => EQUALS
       }
       if (closers isDefinedAt in.token) in.token = closers(in.token)
       else accept(GT)
@@ -417,7 +418,7 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
         }
         val ts = buf.toList
         if (ts.tail.isEmpty) ts.head
-        else CompoundTypeTree(Template(ts, emptyValDef, List()))
+        else CompoundTypeTree(Template(ts, noSelfType, List()))
       }
 
     def formalParams(): List[ValDef] = {
@@ -488,7 +489,8 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
           val vparams = formalParams()
           if (!isVoid) rtpt = optArrayBrackets(rtpt)
           optThrows()
-          val bodyOk = !inInterface || (mods hasFlag Flags.DEFAULTMETHOD)
+          val isStatic = mods hasFlag Flags.STATIC
+          val bodyOk = !inInterface || ((mods hasFlag Flags.DEFAULTMETHOD) || isStatic)
           val body =
             if (bodyOk && in.token == LBRACE) {
               methodBody()
@@ -507,10 +509,10 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
                 EmptyTree
               }
             }
-          if (inInterface) mods1 |= Flags.DEFERRED
+          if (inInterface && !isStatic) mods1 |= Flags.DEFERRED
           List {
             atPos(pos) {
-              DefDef(mods1, name, tparams, List(vparams), rtpt, body)
+              DefDef(mods1, name.toTermName, tparams, List(vparams), rtpt, body)
             }
           }
         } else {
@@ -538,7 +540,7 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
         in.nextToken()
         if (in.token == IDENTIFIER) { // if there's an ident after the comma ...
           val name = ident()
-          if (in.token == ASSIGN || in.token == SEMI) { // ... followed by a `=` or `;`, we know it's a real variable definition
+          if (in.token == EQUALS || in.token == SEMI) { // ... followed by a `=` or `;`, we know it's a real variable definition
             buf ++= maybe
             buf += varDecl(in.currentPos, mods, tpt.duplicate, name.toTermName)
             maybe.clear()
@@ -563,7 +565,7 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
 
     def varDecl(pos: Position, mods: Modifiers, tpt: Tree, name: TermName): ValDef = {
       val tpt1 = optArrayBrackets(tpt)
-      if (in.token == ASSIGN && !mods.isParameter) skipTo(COMMA, SEMI)
+      if (in.token == EQUALS && !mods.isParameter) skipTo(COMMA, SEMI)
       val mods1 = if (mods.isFinal) mods &~ Flags.FINAL else mods | Flags.MUTABLE
       atPos(pos) {
         ValDef(mods1, name, tpt1, blankExpr)
@@ -759,9 +761,13 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
       val interfaces = interfacesOpt()
       accept(LBRACE)
       val buf = new ListBuffer[Tree]
+      var enumIsFinal = true
       def parseEnumConsts() {
         if (in.token != RBRACE && in.token != SEMI && in.token != EOF) {
-          buf += enumConst(enumType)
+          val (const, hasClassBody) = enumConst(enumType)
+          buf += const
+          // if any of the enum constants has a class body, the enum class is not final (JLS 8.9.)
+          enumIsFinal &&= !hasClassBody
           if (in.token == COMMA) {
             in.nextToken()
             parseEnumConsts()
@@ -791,15 +797,25 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
       accept(RBRACE)
       val superclazz =
         AppliedTypeTree(javaLangDot(tpnme.Enum), List(enumType))
+      val finalFlag = if (enumIsFinal) Flags.FINAL else 0l
+      val abstractFlag = {
+        // javac adds `ACC_ABSTRACT` to enum classes with deferred members
+        val hasAbstractMember = body exists {
+          case d: DefDef => d.mods.isDeferred
+          case _         => false
+        }
+        if (hasAbstractMember) Flags.ABSTRACT else 0l
+      }
       addCompanionObject(consts ::: statics ::: predefs, atPos(pos) {
-        ClassDef(mods, name, List(),
+        ClassDef(mods | Flags.ENUM | finalFlag | abstractFlag, name, List(),
                  makeTemplate(superclazz :: interfaces, body))
       })
     }
 
-    def enumConst(enumType: Tree) = {
+    def enumConst(enumType: Tree): (ValDef, Boolean) = {
       annotations()
-      atPos(in.currentPos) {
+      var hasClassBody = false
+      val res = atPos(in.currentPos) {
         val name = ident()
         if (in.token == LPAREN) {
           // skip arguments
@@ -807,15 +823,14 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
           accept(RPAREN)
         }
         if (in.token == LBRACE) {
+          hasClassBody = true
           // skip classbody
           skipAhead()
           accept(RBRACE)
         }
-        // The STABLE flag is to signal to namer that this was read from a
-        // java enum, and so should be given a Constant type (thereby making
-        // it usable in annotations.)
-        ValDef(Modifiers(Flags.STABLE | Flags.JAVA | Flags.STATIC), name.toTermName, enumType, blankExpr)
+        ValDef(Modifiers(Flags.ENUM | Flags.STABLE | Flags.JAVA | Flags.STATIC), name.toTermName, enumType, blankExpr)
       }
+      (res, hasClassBody)
     }
 
     def typeDecl(mods: Modifiers): List[Tree] = in.token match {

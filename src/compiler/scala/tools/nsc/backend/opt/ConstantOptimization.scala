@@ -7,7 +7,6 @@ package scala
 package tools.nsc
 package backend.opt
 
-import scala.tools.nsc.backend.icode.analysis.LubException
 import scala.annotation.tailrec
 
 /**
@@ -19,7 +18,7 @@ import scala.annotation.tailrec
  *
  * With some more work it could be extended to
  * - cache stable values (final fields, modules) in locals
- * - replace the copy propagation in ClosureElilmination
+ * - replace the copy propagation in ClosureElimination
  * - fold constants
  * - eliminate unnecessary stores and loads
  * - propagate knowledge gathered from conditionals for further optimization
@@ -33,6 +32,8 @@ abstract class ConstantOptimization extends SubComponent {
 
   /** Create a new phase */
   override def newPhase(p: Phase) = new ConstantOptimizationPhase(p)
+
+  override val enabled: Boolean = settings.YconstOptimization
 
   /**
    * The constant optimization phase.
@@ -436,7 +437,7 @@ abstract class ConstantOptimization extends SubComponent {
         // TODO if we do all that we need to be careful in the
         // case that success and failure are the same target block
         // because we're using a Map and don't want one possible state to clobber the other
-        // alternative mayb we should just replace the conditional with a jump if both targets are the same
+        // alternative maybe we should just replace the conditional with a jump if both targets are the same
 
         def mightEqual = val1 mightEqual val2
         def mightNotEqual = val1 mightNotEqual val2
@@ -490,7 +491,10 @@ abstract class ConstantOptimization extends SubComponent {
         case SWITCH(tags, labels) =>
           val in1 = in peek 0
           val reachableNormalLabels = tags zip labels collect { case (tagSet, label) if canSwitch(in1, tagSet) => label }
-          val reachableLabels = if (labels.lengthCompare(tags.length) > 0) {
+          val reachableLabels = if (tags.isEmpty) {
+            assert(labels.size == 1, s"When SWITCH node has empty array of tags it should have just one (default) label: $labels")
+            labels
+          } else if (labels.lengthCompare(tags.length) > 0) {
             // if we've got an extra label then it's the default
             val defaultLabel = labels.last
             // see if the default is reachable by seeing if the input might be out of the set

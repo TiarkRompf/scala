@@ -54,6 +54,9 @@ trait SyntheticMethods extends ast.TreeDSL {
   /** Does not force the info of `caseclazz` */
   final def caseAccessorName(caseclazz: Symbol, paramName: TermName) =
     (renamedCaseAccessors get caseclazz).fold(paramName)(_(paramName))
+  final def clearRenamedCaseAccessors(caseclazz: Symbol): Unit = {
+    renamedCaseAccessors -= caseclazz
+  }
 
   /** Add the synthetic methods to case classes.
    */
@@ -95,7 +98,7 @@ trait SyntheticMethods extends ast.TreeDSL {
     // which they shouldn't.
     val accessorLub  = (
       if (settings.Xexperimental) {
-        global.weakLub(accessors map (_.tpe.finalResultType)) match {
+        global.lub(accessors map (_.tpe.finalResultType)) match {
           case RefinedType(parents, decls) if !decls.isEmpty => intersectionType(parents)
           case tp                                            => tp
         }
@@ -157,7 +160,7 @@ trait SyntheticMethods extends ast.TreeDSL {
         Ident(eqmeth.firstParam),
         List(
           CaseDef(Typed(Ident(nme.WILDCARD), TypeTree(clazz.tpe)), EmptyTree, TRUE),
-          CaseDef(WILD.empty, EmptyTree, FALSE)
+          CaseDef(Ident(nme.WILDCARD), EmptyTree, FALSE)
         )
       )
     }
@@ -168,7 +171,7 @@ trait SyntheticMethods extends ast.TreeDSL {
     def thatCast(eqmeth: Symbol): Tree =
       gen.mkCast(Ident(eqmeth.firstParam), clazz.tpe)
 
-    /* The equality method core for case classes and inline clases.
+    /* The equality method core for case classes and inline classes.
      * 1+ args:
      *   (that.isInstanceOf[this.C]) && {
      *       val x$1 = that.asInstanceOf[this.C]
@@ -339,12 +342,11 @@ trait SyntheticMethods extends ast.TreeDSL {
           !hasOverridingImplementation(m) || {
             clazz.isDerivedValueClass && (m == Any_hashCode || m == Any_equals) && {
               // Without a means to suppress this warning, I've thought better of it.
-              //
-              // if (settings.lint) {
-              //   (clazz.info nonPrivateMember m.name) filter (m => (m.owner != AnyClass) && (m.owner != clazz) && !m.isDeferred) andAlso { m =>
-              //     currentUnit.warning(clazz.pos, s"Implementation of ${m.name} inherited from ${m.owner} overridden in $clazz to enforce value class semantics")
-              //   }
-              // }
+              if (settings.warnValueOverrides) {
+                 (clazz.info nonPrivateMember m.name) filter (m => (m.owner != AnyClass) && (m.owner != clazz) && !m.isDeferred) andAlso { m =>
+                   typer.context.warning(clazz.pos, s"Implementation of ${m.name} inherited from ${m.owner} overridden in $clazz to enforce value class semantics")
+                 }
+               }
               true
             }
           }
@@ -380,7 +382,7 @@ trait SyntheticMethods extends ast.TreeDSL {
         val original = ddef.symbol
         val newAcc = deriveMethod(ddef.symbol, name => context.unit.freshTermName(name + "$")) { newAcc =>
           newAcc.makePublic
-          newAcc resetFlag (ACCESSOR | PARAMACCESSOR)
+          newAcc resetFlag (ACCESSOR | PARAMACCESSOR | OVERRIDE)
           ddef.rhs.duplicate
         }
         // TODO: shouldn't the next line be: `original resetFlag CASEACCESSOR`?

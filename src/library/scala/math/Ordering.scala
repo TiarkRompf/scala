@@ -26,7 +26,7 @@ import scala.language.{implicitConversions, higherKinds}
   * val pairs = Array(("a", 5, 2), ("c", 3, 1), ("b", 1, 3))
   *
   * // sort by 2nd element
-  * Sorting.quickSort(pairs)(Ordering.by[(String, Int, Int), Int](_._2)
+  * Sorting.quickSort(pairs)(Ordering.by[(String, Int, Int), Int](_._2))
   *
   * // sort by the 3rd element, then 1st
   * Sorting.quickSort(pairs)(Ordering[(Int, String)].on(x => (x._3, x._1)))
@@ -284,6 +284,9 @@ object Ordering extends LowPriorityOrderingImplicits {
       override def gteq(x: Float, y: Float): Boolean = outer.gteq(y, x)
       override def lt(x: Float, y: Float): Boolean = outer.lt(y, x)
       override def gt(x: Float, y: Float): Boolean = outer.gt(y, x)
+      override def min(x: Float, y: Float): Float = outer.max(x, y)
+      override def max(x: Float, y: Float): Float = outer.min(x, y)
+
     }
   }
   implicit object Float extends FloatOrdering
@@ -309,6 +312,8 @@ object Ordering extends LowPriorityOrderingImplicits {
       override def gteq(x: Double, y: Double): Boolean = outer.gteq(y, x)
       override def lt(x: Double, y: Double): Boolean = outer.lt(y, x)
       override def gt(x: Double, y: Double): Boolean = outer.gt(y, x)
+      override def min(x: Double, y: Double): Double = outer.max(x, y)
+      override def max(x: Double, y: Double): Double = outer.min(x, y)
     }
   }
   implicit object Double extends DoubleOrdering

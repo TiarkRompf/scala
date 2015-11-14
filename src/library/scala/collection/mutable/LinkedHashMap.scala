@@ -52,6 +52,7 @@ class LinkedHashMap[A, B] extends AbstractMap[A, B]
                              with HashTable[A, LinkedEntry[A, B]]
                              with Serializable
 {
+  override protected type plocal = local[LT]
 
   override def empty = LinkedHashMap.empty[A, B]
   override def size = tableSize
@@ -85,7 +86,10 @@ class LinkedHashMap[A, B] extends AbstractMap[A, B]
     }
   }
 
+  @deprecatedOverriding("+= should not be overridden so it stays consistent with put.", "2.11.0")
   def += (kv: (A, B)): this.type = { put(kv._1, kv._2); this }
+
+  @deprecatedOverriding("-= should not be overridden so it stays consistent with remove.", "2.11.0")
   def -=(key: A): this.type = { remove(key); this }
 
   def iterator: Iterator[(A, B)] = new AbstractIterator[(A, B)] {
@@ -95,25 +99,25 @@ class LinkedHashMap[A, B] extends AbstractMap[A, B]
       if (hasNext) { val res = (cur.key, cur.value); cur = cur.later; res }
       else Iterator.empty.next()
   }
-  
+
   protected class FilteredKeys(p: A => Boolean) extends super.FilteredKeys(p) {
     override def empty = LinkedHashMap.empty
   }
-  
+
   override def filterKeys(p: A => Boolean): scala.collection.Map[A, B] = new FilteredKeys(p)
 
   protected class MappedValues[C](f: B => C) extends super.MappedValues[C](f) {
     override def empty = LinkedHashMap.empty
   }
-  
+
   override def mapValues[C](f: B => C): scala.collection.Map[A, C] = new MappedValues(f)
-  
+
   protected class DefaultKeySet extends super.DefaultKeySet {
     override def empty = LinkedHashSet.empty
   }
-  
+
   override def keySet: scala.collection.Set[A] = new DefaultKeySet
-  
+
   override def keysIterator: Iterator[A] = new AbstractIterator[A] {
     private var cur = firstEntry
     def hasNext = cur ne null
@@ -157,18 +161,23 @@ class LinkedHashMap[A, B] extends AbstractMap[A, B]
   override def clear() {
     clearTable()
     firstEntry = null
+    lastEntry = null
   }
 
   private def writeObject(out: java.io.ObjectOutputStream) {
+  ESC.TRY{cc =>
     serializeTo(out, { entry =>
-      out.writeObject(entry.key)
-      out.writeObject(entry.value)
-    })
-  }
+      ESC.THROW(out.writeObject(entry.key))(cc)
+      ESC.THROW(out.writeObject(entry.value))(cc)
+    })(cc)
+  }}
 
   private def readObject(in: java.io.ObjectInputStream) {
+  ESC.TRY{cc =>
     firstEntry = null
     lastEntry = null
-    init(in, createNewEntry(in.readObject().asInstanceOf[A], in.readObject()))
-  }
+    init(in, createNewEntry(
+      ESC.THROW(in.readObject().asInstanceOf[A])(cc),
+      ESC.THROW(in.readObject())(cc)))(cc)
+  }}
 }

@@ -97,6 +97,14 @@ import scala.language.implicitConversions
  *  If, on the other hand, there is nothing holding on to the head (e.g. we used
  *  `def` to define the `Stream`) then once it is no longer being used directly,
  *  it disappears.
+ *
+ *  - Note that some operations, including [[drop]], [[dropWhile]],
+ *  [[flatMap]] or [[collect]] may process a large number of intermediate
+ *  elements before returning.  These necessarily hold onto the head, since
+ *  they are methods on `Stream`, and a stream holds its own head.  For
+ *  computations of this sort where memoization is not desired, use
+ *  `Iterator` when possible.
+ *
  *  {{{
  *  // For example, let's build the natural numbers and do some silly iteration
  *  // over them.
@@ -145,7 +153,7 @@ import scala.language.implicitConversions
  *
  *  - The fact that `tail` works at all is of interest.  In the definition of
  *  `fibs` we have an initial `(0, 1, Stream(...))` so `tail` is deterministic.
- *  If we deinfed `fibs` such that only `0` were concretely known then the act
+ *  If we defined `fibs` such that only `0` were concretely known then the act
  *  of determining `tail` would require the evaluation of `tail` which would
  *  cause an infinite recursion and stack overflow.  If we define a definition
  *  where the tail is not initially computable then we're going to have an
@@ -168,6 +176,12 @@ import scala.language.implicitConversions
  *    loop(1, 1)
  *  }
  *  }}}
+ * 
+ *  Note that `mkString` forces evaluation of a `Stream`, but `addString` does
+ *  not.  In both cases, a `Stream` that is or ends in a cycle 
+ *  (e.g. `lazy val s: Stream[Int] = 0 #:: s`) will convert additional trips
+ *  through the cycle to `...`.  Additionally, `addString` will display an
+ *  un-memoized tail as `?`.
  *
  *  @tparam A    the type of the elements contained in this stream.
  *
@@ -211,7 +225,7 @@ self =>
    * }}}
    *
    *  @return The first element of the `Stream`.
-   *  @throws Predef.NoSuchElementException if the stream is empty.
+   *  @throws java.util.NoSuchElementException if the stream is empty.
    */
   def head: A
 
@@ -222,7 +236,7 @@ self =>
    *  returns the lazy result.
    *
    *  @return The tail of the `Stream`.
-   *  @throws Predef.UnsupportedOperationException if the stream is empty.
+   *  @throws UnsupportedOperationException if the stream is empty.
    */
   def tail: Stream[A]
 
@@ -245,12 +259,22 @@ self =>
    * @note Often we use `Stream`s to represent an infinite set or series.  If
    * that's the case for your particular `Stream` then this function will never
    * return and will probably crash the VM with an `OutOfMemory` exception.
+   * This function will not hang on a finite cycle, however.
    *
    *  @return The fully realized `Stream`.
    */
   def force: Stream[A] = {
-    var these = this
-    while (!these.isEmpty) these = these.tail
+    // Use standard 2x 1x iterator trick for cycle detection ("those" is slow one)
+    var these, those = this
+    if (!these.isEmpty) these = these.tail
+    while (those ne these) {
+      if (these.isEmpty) return this
+      these = these.tail
+      if (these.isEmpty) return this
+      these = these.tail
+      if (these eq those) return this
+      those = those.tail
+    }
     this
   }
 
@@ -301,9 +325,24 @@ self =>
 
   override def toStream: Stream[A] = this
 
-  override def hasDefiniteSize = {
-    def loop(s: Stream[A]): Boolean = s.isEmpty || s.tailDefined && loop(s.tail)
-    loop(this)
+  override def hasDefiniteSize: Boolean = isEmpty || {
+    if (!tailDefined) false
+    else {
+      // Two-iterator trick (2x & 1x speed) for cycle detection.
+      var those = this
+      var these = tail
+      while (those ne these) {
+        if (these.isEmpty) return true
+        if (!these.tailDefined) return false
+        these = these.tail
+        if (these.isEmpty) return true
+        if (!these.tailDefined) return false
+        these = these.tail
+        if (those eq these) return false
+        those = those.tail
+      }
+      false  // Cycle detected
+    }
   }
 
   /** Create a new stream which contains all elements of this stream followed by
@@ -321,7 +360,7 @@ self =>
    * `List(BigInt(12)) ++ fibs`.
    *
    * @tparam B The element type of the returned collection.'''That'''
-   * @param that The [[scala.collection.GenTraversableOnce]] the be contatenated
+   * @param that The [[scala.collection.GenTraversableOnce]] the be concatenated
    * to this `Stream`.
    * @return A new collection containing the result of concatenating `this` with
    * `that`.
@@ -461,7 +500,7 @@ self =>
     else super.flatMap(f)(bf)
 
   /** Returns all the elements of this `Stream` that satisfy the predicate `p`
-   * in a new `Stream` - i.e. it is still a lazy data structure. The order of
+   * in a new `Stream` - i.e., it is still a lazy data structure. The order of
    * the elements is preserved
    *
    *  @param p the predicate used to filter the stream.
@@ -473,7 +512,7 @@ self =>
    * // produces
    * }}}
    */
-  override def filter(p: A => Boolean): Stream[A] = {
+  override def filter(@plocal p: A => Boolean): Stream[A] = {
     // optimization: drop leading prefix of elems for which f returns false
     // var rest = this dropWhile (!p(_)) - forget DRY principle - GC can't collect otherwise
     var rest = this
@@ -483,7 +522,7 @@ self =>
     else Stream.Empty
   }
 
-  override final def withFilter(p: A => Boolean): StreamWithFilter = new StreamWithFilter(p)
+  override final def withFilter(@plocal p: A => Boolean): StreamWithFilter = new StreamWithFilter(p)
 
   /** A lazier implementation of WithFilter than TraversableLike's.
    */
@@ -531,7 +570,7 @@ self =>
       for (x <- self)
         if (p(x)) f(x)
 
-    override def withFilter(q: A => Boolean): StreamWithFilter =
+    override def withFilter(@plocal q: A => Boolean): StreamWithFilter =
       new StreamWithFilter(x => p(x) && q(x))
   }
 
@@ -566,7 +605,7 @@ self =>
    * @return The accumulated value from successive applications of `op`.
    */
   @tailrec
-  override final def foldLeft[B](z: B)(op: (B, A) => B): B = {
+  override final def foldLeft[B](z: B)(@plocal op: (B, A) => B): B = {
     if (this.isEmpty) z
     else tail.foldLeft(op(z, head))(op)
   }
@@ -578,7 +617,7 @@ self =>
    * @param f The operation to perform on successive elements of the `Stream`.
    * @return The accumulated value from successive applications of `f`.
    */
-  override final def reduceLeft[B >: A](f: (B, A) => B): B = {
+  override final def reduceLeft[B >: A](@plocal f: (B, A) => B): B = {
     if (this.isEmpty) throw new UnsupportedOperationException("empty.reduceLeft")
     else {
       var reducedRes: B = this.head
@@ -608,7 +647,7 @@ self =>
    * }}}
    *
    */
-  override def partition(p: A => Boolean): (Stream[A], Stream[A]) = (filter(p(_)), filterNot(p(_)))
+  override def partition(@plocal p: A => Boolean): (Stream[A], Stream[A]) = (filter(p(_)), filterNot(p(_)))
 
   /** Returns a stream formed from this stream and the specified stream `that`
    * by associating each element of the former with the element at the same
@@ -680,7 +719,8 @@ self =>
    *  `end`. Inside, the string representations of defined elements (w.r.t.
    *  the method `toString()`) are separated by the string `sep`. The method will
    *  not force evaluation of undefined elements. A tail of such elements will be
-   * represented by a `"?"` instead.
+   * represented by a `"?"` instead.  A cyclic stream is represented by a `"..."`
+   * at the point where the cycle repeats.
    *
    * @param b The [[collection.mutable.StringBuilder]] factory to which we need
    * to add the string elements.
@@ -691,16 +731,86 @@ self =>
    * resulting string.
    */
   override def addString(b: StringBuilder, start: String, sep: String, end: String): StringBuilder = {
-    def loop(pre: String, these: Stream[A]) {
-      if (these.isEmpty) b append end
-      else {
-        b append pre append these.head
-        if (these.tailDefined) loop(sep, these.tail)
-        else b append sep append "?" append end
+    b append start
+    if (!isEmpty) {
+      b append head
+      var cursor = this
+      var n = 1
+      if (cursor.tailDefined) {  // If tailDefined, also !isEmpty
+        var scout = tail
+        if (scout.isEmpty) {
+          // Single element.  Bail out early.
+          b append end
+          return b
+        }
+        if (cursor ne scout) {
+          cursor = scout
+          if (scout.tailDefined) {
+            scout = scout.tail
+            // Use 2x 1x iterator trick for cycle detection; slow iterator can add strings
+            while ((cursor ne scout) && scout.tailDefined) {
+              b append sep append cursor.head
+              n += 1
+              cursor = cursor.tail
+              scout = scout.tail
+              if (scout.tailDefined) scout = scout.tail
+            }
+          }
+        }
+        if (!scout.tailDefined) {  // Not a cycle, scout hit an end
+          while (cursor ne scout) {
+            b append sep append cursor.head
+            n += 1
+            cursor = cursor.tail
+          }
+          if (cursor.nonEmpty) {
+            b append sep append cursor.head
+          }
+        }
+        else {
+          // Cycle.
+          // If we have a prefix of length P followed by a cycle of length C,
+          // the scout will be at position (P%C) in the cycle when the cursor
+          // enters it at P.  They'll then collide when the scout advances another
+          // C - (P%C) ahead of the cursor.
+          // If we run the scout P farther, then it will be at the start of
+          // the cycle: (C - (P%C) + (P%C)) == C == 0.  So if another runner
+          // starts at the beginning of the prefix, they'll collide exactly at
+          // the start of the loop.
+          var runner = this
+          var k = 0
+          while (runner ne scout) {
+            runner = runner.tail
+            scout = scout.tail
+            k += 1
+          }
+          // Now runner and scout are at the beginning of the cycle.  Advance
+          // cursor, adding to string, until it hits; then we'll have covered
+          // everything once.  If cursor is already at beginning, we'd better
+          // advance one first unless runner didn't go anywhere (in which case
+          // we've already looped once).
+          if ((cursor eq scout) && (k > 0)) {
+            b append sep append cursor.head
+            n += 1
+            cursor = cursor.tail
+          }
+          while (cursor ne scout) {
+            b append sep append cursor.head
+            n += 1
+            cursor = cursor.tail
+          }
+          // Subtract prefix length from total length for cycle reporting.
+          // (Not currently used, but probably a good idea for the future.)
+          n -= k
+        }
+      }
+      if (!cursor.isEmpty) {
+        // Either undefined or cyclic; we can check with tailDefined
+        if (!cursor.tailDefined) b append sep append "?"
+        else b append sep append "..."
       }
     }
-    b append start
-    loop("", this)
+    b append end
     b
   }
 
@@ -771,7 +881,7 @@ self =>
    * @return A new `Stream` containing everything but the last element.  If your
    * `Stream` represents an infinite series, this method will not return.
    *
-   *  @throws `Predef.UnsupportedOperationException` if the stream is empty.
+   *  @throws UnsupportedOperationException if the stream is empty.
    */
   override def init: Stream[A] =
     if (isEmpty) super.init
@@ -827,7 +937,7 @@ self =>
    * produces: "0, 1, 2, 3, 4"
    * }}}
    */
-  override def takeWhile(p: A => Boolean): Stream[A] =
+  override def takeWhile(@plocal p: A => Boolean): Stream[A] =
     if (!isEmpty && p(head)) cons(head, tail takeWhile p)
     else Stream.Empty
 
@@ -839,7 +949,7 @@ self =>
    *
    * @param p the test predicate.
    * @return A new `Stream` representing the results of applying `p` to the
-   * oringal `Stream`.
+   * original `Stream`.
    *
    * @example {{{
    * // Assume we have a Stream that takes the first 20 natural numbers
@@ -848,7 +958,7 @@ self =>
    * // produces: "10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
    * }}}
    */
-  override def dropWhile(p: A => Boolean): Stream[A] = {
+  override def dropWhile(@plocal p: A => Boolean): Stream[A] = {
     var these: Stream[A] = this
     while (!these.isEmpty && p(these.head)) these = these.tail
     these
@@ -955,19 +1065,21 @@ self =>
    * `Stream`.
    * @example {{{
    * val sov: Stream[Vector[Int]] = Vector(0) #:: Vector(0, 0) #:: sov.zip(sov.tail).map { n => n._1 ++ n._2 }
-   * sov flatten take 10 mkString ", "
+   * sov.flatten take 10 mkString ", "
    * // produces: "0, 0, 0, 0, 0, 0, 0, 0, 0, 0"
    * }}}
    */
   override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[B]): Stream[B] = {
-    def flatten1(t: Traversable[B]): Stream[B] =
-      if (!t.isEmpty)
-        cons(t.head, flatten1(t.tail))
-      else
-        tail.flatten
-
-    if (isEmpty) Stream.empty
-    else flatten1(asTraversable(head).seq.toTraversable)
+    var st: Stream[A] = this
+    while (st.nonEmpty) {
+      val h = asTraversable(st.head)
+      if (h.isEmpty) {
+        st = st.tail
+      } else {
+        return h.toStream #::: st.tail.flatten
+      }
+    }
+    Stream.empty
   }
 
   override def view = new StreamView[A, Stream[A]] {
@@ -1068,7 +1180,13 @@ object Stream extends SeqFactory[Stream] {
    *  to streams.
    */
   class ConsWrapper[A](tl: => Stream[A]) {
+    /** Construct a stream consisting of a given first element followed by elements
+     *  from a lazily evaluated Stream.
+     */
     def #::(hd: A): Stream[A] = cons(hd, tl)
+    /** Construct a stream consisting of the concatenation of the given stream and
+     *  a lazily evaluated Stream.
+     */
     def #:::(prefix: Stream[A]): Stream[A] = prefix append tl
   }
 
@@ -1106,11 +1224,15 @@ object Stream extends SeqFactory[Stream] {
     override def isEmpty = false
     override def head = hd
     @volatile private[this] var tlVal: Stream[A] = _
-    def tailDefined: Boolean = tlVal ne null
+    @volatile private[this] var tlGen = tl _
+    def tailDefined: Boolean = tlGen eq null
     override def tail: Stream[A] = {
       if (!tailDefined)
         synchronized {
-          if (!tailDefined) tlVal = tl
+          if (!tailDefined) {
+            tlVal = tlGen()
+            tlGen = null
+          }
         }
 
       tlVal

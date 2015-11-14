@@ -10,8 +10,6 @@ package scala
 package collection.parallel
 package mutable
 
-
-
 import scala.collection.generic._
 import scala.collection.mutable.Cloneable
 import scala.collection.generic.Growable
@@ -24,6 +22,8 @@ import scala.collection.generic.Shrinkable
  *
  *  @tparam K    the key type of the map
  *  @tparam V    the value type of the map
+ *  @define Coll `ParMap`
+ *  @define coll parallel map
  *
  *  @author Aleksandar Prokopec
  *  @since 2.9
@@ -51,6 +51,4 @@ extends scala.collection.GenMapLike[K, V, Repr]
   def -(key: K) = this.clone() -= key
 
   def clear(): Unit
-
 }
-

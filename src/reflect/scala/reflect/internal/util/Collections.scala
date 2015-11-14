@@ -34,12 +34,41 @@ trait Collections {
     xss forall (_ forall p)
   final def mmap[A, B](xss: List[List[A]])(f: A => B) =
     xss map (_ map f)
-  final def mforeach[A](xss: List[List[A]])(f: A => Unit) =
-    xss foreach (_ foreach f)
   final def mfind[A](xss: List[List[A]])(p: A => Boolean): Option[A] = {
     var res: Option[A] = null
     mforeach(xss)(x => if ((res eq null) && p(x)) res = Some(x))
     if (res eq null) None else res
+  }
+
+  /** These are all written in terms of List because we're trying to wring all
+   *  the performance we can and List is used almost exclusively in the compiler,
+   *  but people are branching out in their collections so here's an overload.
+   */
+  final def mforeach[A](xss: List[List[A]])(f: A => Unit) = xss foreach (_ foreach f)
+  final def mforeach[A](xss: Traversable[Traversable[A]])(f: A => Unit) = xss foreach (_ foreach f)
+
+  /** A version of List#map, specialized for List, and optimized to avoid allocation if `as` is empty */
+  final def mapList[A, B](as: List[A])(f: A => B): List[B] = if (as eq Nil) Nil else {
+    val head = new ::[B](f(as.head), Nil)
+    var tail: ::[B] = head
+    var rest = as.tail
+    while (rest ne Nil) {
+      val next = new ::(f(rest.head), Nil)
+      tail.tl = next
+      tail = next
+      rest = rest.tail
+    }
+    head
+  }
+
+  final def collectFirst[A, B](as: List[A])(pf: PartialFunction[A, B]): Option[B] = {
+    @tailrec
+    def loop(rest: List[A]): Option[B] = rest match {
+      case Nil => None
+      case a :: as if pf.isDefinedAt(a) => Some(pf(a))
+      case a :: as => loop(as)
+    }
+    loop(as)
   }
 
   final def map2[A, B, C](xs1: List[A], xs2: List[B])(f: (A, B) => C): List[C] = {
@@ -53,20 +82,60 @@ trait Collections {
     }
     lb.toList
   }
+
+  /** like map2, but returns list `xs` itself - instead of a copy - if function
+   *  `f` maps all elements to themselves.
+   */
+  final def map2Conserve[A <: AnyRef, B](xs: List[A], ys: List[B])(f: (A, B) => A): List[A] = {
+    // Note to developers: there exists a duplication between this function and `List#mapConserve`.
+    // If any successful optimization attempts or other changes are made, please rehash them there too.
+    @tailrec
+    def loop(mapped: ListBuffer[A], unchanged: List[A], pending0: List[A], pending1: List[B]): List[A] = {
+      if (pending0.isEmpty || pending1.isEmpty) {
+        if (mapped eq null) unchanged
+        else mapped.prependToList(unchanged)
+      } else {
+        val head00 = pending0.head
+        val head01 = pending1.head
+        val head1  = f(head00, head01)
+
+        if ((head1 eq head00.asInstanceOf[AnyRef])) {
+          loop(mapped, unchanged, pending0.tail, pending1.tail)
+        } else {
+          val b = if (mapped eq null) new ListBuffer[A] else mapped
+          var xc = unchanged
+          while ((xc ne pending0) && (xc ne pending1)) {
+            b += xc.head
+            xc = xc.tail
+          }
+          b += head1
+          val tail0 = pending0.tail
+          val tail1 = pending1.tail
+          loop(b, tail0, tail0, tail1)
+        }
+      }
+    }
+    loop(null, xs, xs, ys)
+  }
+
   final def map3[A, B, C, D](xs1: List[A], xs2: List[B], xs3: List[C])(f: (A, B, C) => D): List[D] = {
     if (xs1.isEmpty || xs2.isEmpty || xs3.isEmpty) Nil
     else f(xs1.head, xs2.head, xs3.head) :: map3(xs1.tail, xs2.tail, xs3.tail)(f)
   }
   final def flatMap2[A, B, C](xs1: List[A], xs2: List[B])(f: (A, B) => List[C]): List[C] = {
-    val lb = new ListBuffer[C]
+    var lb: ListBuffer[C] = null
     var ys1 = xs1
     var ys2 = xs2
     while (!ys1.isEmpty && !ys2.isEmpty) {
-      lb ++= f(ys1.head, ys2.head)
+      val cs = f(ys1.head, ys2.head)
+      if (cs ne Nil) {
+        if (lb eq null) lb = new ListBuffer[C]
+        lb ++= cs
+      }
       ys1 = ys1.tail
       ys2 = ys2.tail
     }
-    lb.toList
+    if (lb eq null) Nil else lb.result
   }
 
   final def flatCollect[A, B](elems: List[A])(pf: PartialFunction[A, Traversable[B]]): List[B] = {
@@ -111,6 +180,9 @@ trait Collections {
 
   final def mapFrom[A, A1 >: A, B](xs: List[A])(f: A => B): Map[A1, B] = {
     Map[A1, B](xs map (x => (x, f(x))): _*)
+  }
+  final def linkedMapFrom[A, A1 >: A, B](xs: List[A])(f: A => B): mutable.LinkedHashMap[A1, B] = {
+    mutable.LinkedHashMap[A1, B](xs map (x => (x, f(x))): _*)
   }
 
   final def mapWithIndex[A, B](xs: List[A])(f: (A, Int) => B): List[B] = {
@@ -201,6 +273,11 @@ trait Collections {
       ys3 = ys3.tail
     }
     true
+  }
+
+  final def sequence[A](as: List[Option[A]]): Option[List[A]] = {
+    if (as.exists (_.isEmpty)) None
+    else Some(as.flatten)
   }
 
   final def transposeSafe[A](ass: List[List[A]]): Option[List[List[A]]] = try {

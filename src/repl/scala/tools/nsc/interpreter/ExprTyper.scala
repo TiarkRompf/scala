@@ -13,34 +13,7 @@ trait ExprTyper {
 
   import repl._
   import global.{ reporter => _, Import => _, _ }
-  import syntaxAnalyzer.UnitParser
   import naming.freshInternalVarName
-
-  object codeParser {
-    val global: repl.global.type = repl.global
-    def applyRule[T](code: String, rule: UnitParser => T): T = {
-      reporter.reset()
-      val scanner = newUnitParser(code)
-      val result  = rule(scanner)
-
-      if (!reporter.hasErrors)
-        scanner.accept(EOF)
-
-      result
-    }
-    def stmts(code: String) = applyRule(code, _.templateStats())
-  }
-
-  /** Parse a line into a sequence of trees. Returns None if the input is incomplete. */
-  def parse(line: String): Option[List[Tree]] = debugging(s"""parse("$line")""")  {
-    var isIncomplete = false
-    reporter.withIncompleteHandler((_, _) => isIncomplete = true) {
-      val trees = codeParser.stmts(line)
-      if (reporter.hasErrors) Some(Nil)
-      else if (isIncomplete) None
-      else Some(trees)
-    }
-  }
 
   def symbolOfLine(code: String): Symbol = {
     def asExpr(): Symbol = {
@@ -54,7 +27,7 @@ trait ExprTyper {
         case IR.Success =>
           val sym0 = symbolOfTerm(name)
           // drop NullaryMethodType
-          sym0.cloneSymbol setInfo exitingTyper(sym0.info.finalResultType)
+          sym0.cloneSymbol setInfo exitingTyper(sym0.tpe_*.finalResultType)
         case _          => NoSymbol
       }
     }

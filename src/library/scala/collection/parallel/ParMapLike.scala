@@ -6,12 +6,8 @@
 **                          |/                                          **
 \*                                                                      */
 
-
 package scala
 package collection.parallel
-
-
-
 
 import scala.collection.MapLike
 import scala.collection.GenMapLike
@@ -21,10 +17,6 @@ import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.generic.IdleSignalling
 import scala.collection.generic.Signalling
 
-
-
-
-
 /** A template trait for mutable parallel maps. This trait is to be mixed in
  *  with concrete parallel maps to override the representation type.
  *
@@ -32,6 +24,8 @@ import scala.collection.generic.Signalling
  *
  *  @tparam K    the key type of the map
  *  @tparam V    the value type of the map
+ *  @define Coll `ParMap`
+ *  @define coll parallel map
  *
  *  @author Aleksandar Prokopec
  *  @since 2.9
@@ -147,15 +141,3 @@ self =>
 
   // note - should not override toMap (could be mutable)
 }
-
-
-
-
-
-
-
-
-
-
-
-

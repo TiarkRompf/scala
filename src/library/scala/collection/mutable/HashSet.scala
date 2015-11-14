@@ -48,6 +48,8 @@ extends AbstractSet[A]
 {
   initWithContents(contents)
 
+  override protected type plocal = local[LT]
+
   def this() = this(null)
 
   override def companion: GenericCompanion[HashSet] = HashSet
@@ -83,11 +85,11 @@ extends AbstractSet[A]
   override def clone() = new HashSet[A] ++= this
 
   private def writeObject(s: java.io.ObjectOutputStream) {
-    serializeTo(s)
+    ESC.TRY(cc=>serializeTo(s)(cc))
   }
 
   private def readObject(in: java.io.ObjectInputStream) {
-    init(in, x => ())
+    ESC.TRY(cc=>init(in, x => ())(cc))
   }
 
   /** Toggles whether a size map is used to track hash map statistics.
@@ -106,4 +108,3 @@ object HashSet extends MutableSetFactory[HashSet] {
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, HashSet[A]] = setCanBuildFrom[A]
   override def empty[A]: HashSet[A] = new HashSet[A]
 }
-

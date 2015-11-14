@@ -60,7 +60,7 @@ trait Primitives { self: ICodes =>
 
   // type : (buf,el) => buf
   // range: lf,rg <- { BOOL, Ix, Ux, Rx, REF, STR }
-  // jvm  : It should call the appropiate 'append' method on StringBuffer
+  // jvm  : It should call the appropriate 'append' method on StringBuffer
   case class StringConcat(el: TypeKind) extends Primitive
 
   /** Signals the beginning of a series of concatenations.
@@ -80,8 +80,6 @@ trait Primitives { self: ICodes =>
       out.print(s)
       this
     }
-
-    def print(o: AnyRef): PrimitivePrinter = print(o.toString())
   }
 
   /** This class represents a comparison operation. */

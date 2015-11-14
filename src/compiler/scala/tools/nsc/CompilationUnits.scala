@@ -5,12 +5,11 @@
 
 package scala.tools.nsc
 
-import util.FreshNameCreator
-import scala.reflect.internal.util.{ SourceFile, NoSourceFile }
+import scala.reflect.internal.util.{ SourceFile, NoSourceFile, FreshNameCreator }
 import scala.collection.mutable
 import scala.collection.mutable.{ LinkedHashSet, ListBuffer }
 
-trait CompilationUnits { self: Global =>
+trait CompilationUnits { global: Global =>
 
   /** An object representing a missing compilation unit.
    */
@@ -26,10 +25,9 @@ trait CompilationUnits { self: Global =>
   class CompilationUnit(val source: SourceFile) extends CompilationUnitContextApi { self =>
 
     /** the fresh name creator */
-    val fresh: FreshNameCreator = new FreshNameCreator.Default
-
-    def freshTermName(prefix: String): TermName = newTermName(fresh.newName(prefix))
-    def freshTypeName(prefix: String): TypeName = newTypeName(fresh.newName(prefix))
+    implicit val fresh: FreshNameCreator                           = new FreshNameCreator
+    def freshTermName(prefix: String = nme.FRESH_TERM_NAME_PREFIX) = global.freshTermName(prefix)
+    def freshTypeName(prefix: String)                              = global.freshTypeName(prefix)
 
     /** the content of the compilation unit in tree form */
     var body: Tree = EmptyTree
@@ -57,8 +55,8 @@ trait CompilationUnits { self: Global =>
     // SBT compatibility (SI-6875)
     //
     // imagine we have a file named A.scala, which defines a trait named Foo and a module named Main
-    // Main contains a call to a macro, which calls c.introduceTopLevel to define a mock for Foo
-    // c.introduceTopLevel creates a virtual file Virt35af32.scala, which contains a class named FooMock extending Foo,
+    // Main contains a call to a macro, which calls compileLate to define a mock for Foo
+    // compileLate creates a virtual file Virt35af32.scala, which contains a class named FooMock extending Foo,
     // and macro expansion instantiates FooMock. the stage is now set. let's see what happens next.
     //
     // without this workaround in scalac or without being patched itself, sbt will think that
@@ -91,13 +89,18 @@ trait CompilationUnits { self: Global =>
         debuglog(s"removing synthetic $sym from $self")
         map -= sym
       }
-      def get(sym: Symbol): Option[Tree] = logResultIf[Option[Tree]](s"found synthetic for $sym in $self", _.isDefined) {
+      def get(sym: Symbol): Option[Tree] = debuglogResultIf[Option[Tree]](s"found synthetic for $sym in $self", _.isDefined) {
         map get sym
       }
       def keys: Iterable[Symbol] = map.keys
       def clear(): Unit = map.clear()
       override def toString = map.toString
     }
+
+    // namer calls typer.computeType(rhs) on DefDef / ValDef when tpt is empty. the result
+    // is cached here and re-used in typedDefDef / typedValDef
+    // Also used to cache imports type-checked by namer.
+    val transformed = new mutable.AnyRefMap[Tree, Tree]
 
     /** things to check at end of compilation unit */
     val toCheck = new ListBuffer[() => Unit]
@@ -119,29 +122,20 @@ trait CompilationUnits { self: Global =>
      */
     val icode: LinkedHashSet[icodes.IClass] = new LinkedHashSet
 
-    def echo(pos: Position, msg: String) =
-      reporter.echo(pos, msg)
+    @deprecated("Call global.reporter.echo directly instead.", "2.11.2")
+    final def echo(pos: Position, msg: String): Unit    = reporter.echo(pos, msg)
+    @deprecated("Call global.reporter.error (or typer.context.error) directly instead.", "2.11.2")
+    final def error(pos: Position, msg: String): Unit   = reporter.error(pos, msg)
+    @deprecated("Call global.reporter.warning (or typer.context.warning) directly instead.", "2.11.2")
+    final def warning(pos: Position, msg: String): Unit = reporter.warning(pos, msg)
 
-    def error(pos: Position, msg: String) =
-      reporter.error(pos, msg)
+    @deprecated("Call global.currentRun.reporting.deprecationWarning directly instead.", "2.11.2")
+    final def deprecationWarning(pos: Position, msg: String): Unit = currentRun.reporting.deprecationWarning(pos, msg)
+    @deprecated("Call global.currentRun.reporting.uncheckedWarning directly instead.", "2.11.2")
+    final def uncheckedWarning(pos: Position, msg: String): Unit   = currentRun.reporting.uncheckedWarning(pos, msg)
 
-    def warning(pos: Position, msg: String) =
-      reporter.warning(pos, msg)
-
-    def deprecationWarning(pos: Position, msg: String) =
-      currentRun.deprecationWarnings0.warn(pos, msg)
-
-    def uncheckedWarning(pos: Position, msg: String) =
-      currentRun.uncheckedWarnings0.warn(pos, msg)
-
-    def inlinerWarning(pos: Position, msg: String) =
-      currentRun.inlinerWarnings.warn(pos, msg)
-
-    def incompleteInputError(pos: Position, msg:String) =
-      reporter.incompleteInputError(pos, msg)
-
-    def comment(pos: Position, msg: String) =
-      reporter.comment(pos, msg)
+    @deprecated("This method will be removed. It does nothing.", "2.11.2")
+    final def comment(pos: Position, msg: String): Unit = {}
 
     /** Is this about a .java source file? */
     lazy val isJava = source.file.name.endsWith(".java")

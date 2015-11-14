@@ -71,11 +71,11 @@ self =>
   def foreach[U](f: A => U): Unit =
     iterator.foreach(f)
 
-  override /*TraversableLike*/ def forall(p: A => Boolean): Boolean =
+  override /*TraversableLike*/ def forall(@plocal p: A => Boolean): Boolean =
     iterator.forall(p)
-  override /*TraversableLike*/ def exists(p: A => Boolean): Boolean =
+  override /*TraversableLike*/ def exists(@plocal p: A => Boolean): Boolean =
     iterator.exists(p)
-  override /*TraversableLike*/ def find(p: A => Boolean): Option[A] =
+  override /*TraversableLike*/ def find(@plocal p: A => Boolean): Option[A] =
     iterator.find(p)
   override /*TraversableLike*/ def isEmpty: Boolean =
     !iterator.hasNext
@@ -83,10 +83,26 @@ self =>
     iterator.foldRight(z)(op)
   override /*TraversableLike*/ def reduceRight[B >: A](op: (A, B) => B): B =
     iterator.reduceRight(op)
+    
+  
+  /** Returns this $coll as an iterable collection.
+   *
+   *  A new collection will not be built; lazy collections will stay lazy.
+   *
+   *  $willNotTerminateInf
+   *  @return an `Iterable` containing all elements of this $coll.
+   */
   override /*TraversableLike*/ def toIterable: Iterable[A] =
     thisCollection
-  override /*TraversableLike*/ def toIterator: Iterator[A] =
-    iterator
+  
+  /** Returns an Iterator over the elements in this $coll.  Produces the same
+   *  result as `iterator`.
+   *  $willNotTerminateInf
+   *  @return an Iterator containing all elements of this $coll.
+   */
+  @deprecatedOverriding("toIterator should stay consistent with iterator for all Iterables: override iterator instead.", "2.11.0")
+  override def toIterator: Iterator[A] = iterator
+  
   override /*TraversableLike*/ def head: A =
     iterator.next()
 
@@ -136,7 +152,7 @@ self =>
     (b ++= it).result()
   }
 
-  override /*TraversableLike*/ def takeWhile(p: A => Boolean): Repr = {
+  override /*TraversableLike*/ def takeWhile(@plocal p: A => Boolean): Repr = {
     val b = newBuilder
     val it = iterator
     while (it.hasNext) {
@@ -152,7 +168,7 @@ self =>
    *
    *  @param size the number of elements per group
    *  @return An iterator producing ${coll}s of size `size`, except the
-   *          last will be truncated if the elements don't divide evenly.
+   *          last will be less than size `size` if the elements don't divide evenly.
    */
   def grouped(size: Int): Iterator[Repr] =
     for (xs <- iterator grouped size) yield {
@@ -163,6 +179,7 @@ self =>
 
   /** Groups elements in fixed size blocks by passing a "sliding window"
    *  over them (as opposed to partitioning them, as is done in grouped.)
+   *  "Sliding window" step is 1 by default.
    *  @see [[scala.collection.Iterator]], method `sliding`
    *
    *  @param size the number of elements per group
@@ -171,14 +188,14 @@ self =>
    *          fewer elements than size.
    */
   def sliding(size: Int): Iterator[Repr] = sliding(size, 1)
-  
+
   /** Groups elements in fixed size blocks by passing a "sliding window"
    *  over them (as opposed to partitioning them, as is done in grouped.)
    *  @see [[scala.collection.Iterator]], method `sliding`
    *
    *  @param size the number of elements per group
    *  @param step the distance between the first elements of successive
-   *         groups (defaults to 1)
+   *         groups
    *  @return An iterator producing ${coll}s of size `size`, except the
    *          last and the only element will be truncated if there are
    *          fewer elements than size.
@@ -201,12 +218,12 @@ self =>
     val b = newBuilder
     b.sizeHintBounded(n, this)
     val lead = this.iterator drop n
-    var go = false
-    for (x <- this.seq) {
-      if (lead.hasNext) lead.next()
-      else go = true
-      if (go) b += x
+    val it = this.iterator
+    while (lead.hasNext) {
+      lead.next()
+      it.next()
     }
+    while (it.hasNext) b += it.next()
     b.result()
   }
 
@@ -266,7 +283,7 @@ self =>
     var i = 0
     for (x <- this) {
       b += ((x, i))
-      i +=1
+      i += 1
     }
     b.result()
   }

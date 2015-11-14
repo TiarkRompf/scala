@@ -7,30 +7,24 @@ package scala
 package tools.nsc
 package interpreter
 
-import Predef.{ println => _, _ }
-import util.stringFromWriter
-import scala.reflect.internal.util._
-import java.net.URL
-import scala.sys.BooleanProp
-import scala.tools.nsc.io.AbstractFile
-import reporters._
-import scala.tools.util.PathResolver
-import scala.tools.nsc.util.ScalaClassLoader
-import scala.tools.nsc.typechecker.{ TypeStrings, StructuredTypeStrings }
-import ScalaClassLoader.URLClassLoader
-import scala.tools.nsc.util.Exceptional.unwrap
-import scala.collection.{ mutable, immutable }
-import scala.reflect.BeanProperty
-import scala.util.Properties.versionString
-import javax.script.{AbstractScriptEngine, Bindings, ScriptContext, ScriptEngine, ScriptEngineFactory, ScriptException, CompiledScript, Compilable}
-import java.io.{ StringWriter, Reader }
-import java.util.Arrays
-import IMain._
-import java.util.concurrent.Future
+import PartialFunction.cond
+import scala.language.implicitConversions
+import scala.beans.BeanProperty
+import scala.collection.mutable
+import scala.concurrent.{ Future, ExecutionContext }
 import scala.reflect.runtime.{ universe => ru }
 import scala.reflect.{ ClassTag, classTag }
-import StdReplTags._
-import scala.language.implicitConversions
+import scala.reflect.internal.util.{ BatchSourceFile, SourceFile }
+import scala.tools.util.PathResolverFactory
+import scala.tools.nsc.io.AbstractFile
+import scala.tools.nsc.typechecker.{ TypeStrings, StructuredTypeStrings }
+import scala.tools.nsc.util.{ ScalaClassLoader, stringFromReader, stringFromWriter, StackTraceOps, ClassPath, MergedClassPath }
+import ScalaClassLoader.URLClassLoader
+import scala.tools.nsc.util.Exceptional.unwrap
+import scala.tools.nsc.backend.JavaPlatform
+import javax.script.{AbstractScriptEngine, Bindings, ScriptContext, ScriptEngine, ScriptEngineFactory, ScriptException, CompiledScript, Compilable}
+import java.net.URL
+import java.io.File
 
 /** An interpreter for Scala code.
  *
@@ -51,7 +45,7 @@ import scala.language.implicitConversions
  *  all variables defined by that code.  To extract the result of an
  *  interpreted line to show the user, a second "result object" is created
  *  which imports the variables exported by the above object and then
- *  exports members called "$eval" and "$print". To accomodate user expressions
+ *  exports members called "$eval" and "$print". To accommodate user expressions
  *  that read from variables or methods defined in previous statements, "import"
  *  statements are used.
  *
@@ -75,6 +69,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   // Used in a test case.
   def showDirectory() = replOutput.show(out)
 
+  lazy val isClassBased: Boolean = settings.Yreplclassbased.value
+
   private[nsc] var printResults               = true      // whether to print result lines
   private[nsc] var totalSilence               = false     // whether to print anything
   private var _initializeComplete             = false     // compiler is initialized
@@ -92,9 +88,11 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   private var _classLoader: util.AbstractFileClassLoader = null                              // active classloader
   private val _compiler: ReplGlobal                 = newCompiler(settings, reporter)   // our private compiler
 
-  def compilerClasspath: Seq[URL] = (
+  private var _runtimeClassLoader: URLClassLoader = null              // wrapper exposing addURL
+
+  def compilerClasspath: Seq[java.net.URL] = (
     if (isInitializeComplete) global.classPath.asURLs
-    else new PathResolver(settings).result.asURLs  // the compiler's classpath
+    else PathResolverFactory.create(settings).resultAsURLs  // the compiler's classpath
   )
   def settings = initialSettings
   // Run the code body with the given boolean settings flipped to true.
@@ -114,21 +112,24 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   def this(factory: ScriptEngineFactory) = this(factory, new Settings())
   def this() = this(new Settings())
 
-  lazy val formatting: Formatting = new Formatting {
-    val prompt = Properties.shellPromptString
-  }
+  // the expanded prompt but without color escapes and without leading newline, for purposes of indenting
+  lazy val formatting: Formatting = new Formatting(
+    (replProps.promptString format Properties.versionNumberString).lines.toList.last.length
+  )
   lazy val reporter: ReplReporter = new ReplReporter(this)
 
-  import formatting._
-  import reporter.{ printMessage, withoutTruncating }
+  import formatting.indentCode
+  import reporter.{ printMessage, printUntruncatedMessage }
 
   // This exists mostly because using the reporter too early leads to deadlock.
   private def echo(msg: String) { Console println msg }
   private def _initSources = List(new BatchSourceFile("<init>", "class $repl_$init { }"))
   private def _initialize() = {
     try {
-      // todo. if this crashes, REPL will hang
-      new _compiler.Run() compileSources _initSources
+      // if this crashes, REPL will hang its head in shame
+      val run = new _compiler.Run()
+      assert(run.typerPhase != NoPhase, "REPL requires a typer phase.")
+      run compileSources _initSources
       _initializeComplete = true
       true
     }
@@ -142,10 +143,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   def initialize(postInitSignal: => Unit) {
     synchronized {
       if (_isInitialized == null) {
-        _isInitialized = io.spawn {
-          try _initialize()
-          finally postInitSignal
-        }
+        _isInitialized =
+          Future(try _initialize() finally postInitSignal)(ExecutionContext.global)
       }
     }
   }
@@ -241,10 +240,22 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   lazy val isettings = new ISettings(this)
 
   /** Instantiate a compiler.  Overridable. */
-  protected def newCompiler(settings: Settings, reporter: Reporter): ReplGlobal = {
+  protected def newCompiler(settings: Settings, reporter: reporters.Reporter): ReplGlobal = {
     settings.outputDirs setSingleOutput replOutput.dir
     settings.exposeEmptyPackage.value = true
     new Global(settings, reporter) with ReplGlobal { override def toString: String = "<global>" }
+  }
+
+  /**
+   * Adds all specified jars to the compile and runtime classpaths.
+   *
+   * @note  Currently only supports jars, not directories.
+   * @param urls The list of items to add to the compile and runtime classpaths.
+   */
+  def addUrlsToClassPath(urls: URL*): Unit = {
+    new Run //  force some initialization
+    urls.foreach(_runtimeClassLoader.addURL) // Add jars to runtime classloader
+    global.extendCompilerClassPath(urls: _*) // Add jars to compile-time classpath
   }
 
   /** Parent classloader.  Overridable. */
@@ -285,6 +296,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
       case s                                 => s
     } mkString "."
   )
+  def readRootPath(readPath: String) = getModuleIfDefined(readPath)
 
   abstract class PhaseDependentOps {
     def shift[T](op: => T): T
@@ -300,41 +312,53 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     def shift[T](op: => T): T = exitingFlatten(op)
   }
 
-  def originalPath(name: String): String = originalPath(name: TermName)
-  def originalPath(name: Name): String   = typerOp path name
-  def originalPath(sym: Symbol): String  = typerOp path sym
+  def originalPath(name: String): String = originalPath(TermName(name))
+  def originalPath(name: Name): String   = translateOriginalPath(typerOp path name)
+  def originalPath(sym: Symbol): String  = translateOriginalPath(typerOp path sym)
+  /** For class based repl mode we use an .INSTANCE accessor. */
+  val readInstanceName = if(isClassBased) ".INSTANCE" else ""
+  def translateOriginalPath(p: String): String = {
+    val readName = java.util.regex.Matcher.quoteReplacement(sessionNames.read)
+    p.replaceFirst(readName, readName + readInstanceName)
+  }
   def flatPath(sym: Symbol): String      = flatOp shift sym.javaClassName
+
   def translatePath(path: String) = {
     val sym = if (path endsWith "$") symbolOfTerm(path.init) else symbolOfIdent(path)
-    sym match {
-      case NoSymbol => None
-      case _        => Some(flatPath(sym))
-    }
-  }
-  def translateEnclosingClass(n: String) = {
-    def enclosingClass(s: Symbol): Symbol =
-      if (s == NoSymbol || s.isClass) s else enclosingClass(s.owner)
-    enclosingClass(symbolOfTerm(n)) match {
-      case NoSymbol => None
-      case c        => Some(flatPath(c))
-    }
+    sym.toOption map flatPath
   }
 
+  /** If path represents a class resource in the default package,
+   *  see if the corresponding symbol has a class file that is a REPL artifact
+   *  residing at a different resource path. Translate X.class to $line3/$read$$iw$$iw$X.class.
+   */
+  def translateSimpleResource(path: String): Option[String] = {
+    if (!(path contains '/') && (path endsWith ".class")) {
+      val name = path stripSuffix ".class"
+      val sym = if (name endsWith "$") symbolOfTerm(name.init) else symbolOfIdent(name)
+      def pathOf(s: String) = s"${s.replace('.', '/')}.class"
+      sym.toOption map (s => pathOf(flatPath(s)))
+    } else {
+      None
+    }
+  }
+  def translateEnclosingClass(n: String) = symbolOfTerm(n).enclClass.toOption map flatPath
+
+  /** If unable to find a resource foo.class, try taking foo as a symbol in scope
+   *  and use its java class name as a resource to load.
+   *
+   *  $intp.classLoader classBytes "Bippy" or $intp.classLoader getResource "Bippy.class" just work.
+   */
   private class TranslatingClassLoader(parent: ClassLoader) extends util.AbstractFileClassLoader(replOutput.dir, parent) {
-    /** Overridden here to try translating a simple name to the generated
-     *  class name if the original attempt fails.  This method is used by
-     *  getResourceAsStream as well as findClass.
-     */
-    override protected def findAbstractFile(name: String): AbstractFile =
-      super.findAbstractFile(name) match {
-        case null => translatePath(name) map (super.findAbstractFile(_)) orNull
-        case file => file
-      }
+    override protected def findAbstractFile(name: String): AbstractFile = super.findAbstractFile(name) match {
+      case null if _initializeComplete => translateSimpleResource(name) map super.findAbstractFile orNull
+      case file => file
+    }
   }
   private def makeClassLoader(): util.AbstractFileClassLoader =
-    new TranslatingClassLoader(parentClassLoader match {
-      case null   => ScalaClassLoader fromURLs compilerClasspath
-      case p      => new URLClassLoader(compilerClasspath, p)
+    new TranslatingClassLoader({
+      _runtimeClassLoader = new URLClassLoader(compilerClasspath, parentClassLoader)
+      _runtimeClassLoader
     })
 
   // Set the current Java "context" class loader to this interpreter's class loader
@@ -405,6 +429,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
 
   def compileSourcesKeepingRun(sources: SourceFile*) = {
     val run = new Run()
+    assert(run.typerPhase != NoPhase, "REPL requires a typer phase.")
     reporter.reset()
     run compileSources sources.toList
     (!reporter.hasErrors, run)
@@ -430,7 +455,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   }
 
   private def safePos(t: Tree, alt: Int): Int =
-    try t.pos.startOrPoint
+    try t.pos.start
     catch { case _: UnsupportedOperationException => alt }
 
   // Given an expression like 10 * 10 * 10 we receive the parent tree positioned
@@ -444,11 +469,11 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   }
 
   private def requestFromLine(line: String, synthetic: Boolean): Either[IR.Result, Request] = {
-    val content = indentCode(line)
+    val content = line  //indentCode(line)
     val trees = parse(content) match {
-      case None         => return Left(IR.Incomplete)
-      case Some(Nil)    => return Left(IR.Error) // parse error or empty input
-      case Some(trees)  => trees
+      case parse.Incomplete     => return Left(IR.Incomplete)
+      case parse.Error          => return Left(IR.Error)
+      case parse.Success(trees) => trees
     }
     repltrace(
       trees map (t => {
@@ -466,7 +491,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     // If the last tree is a bare expression, pinpoint where it begins using the
     // AST node position and snap the line off there.  Rewrite the code embodied
     // by the last tree as a ValDef instead, so we can access the value.
-    trees.last match {
+    val last = trees.lastOption.getOrElse(EmptyTree)
+    last match {
       case _:Assign                        => // we don't want to include assignments
       case _:TermTree | _:Ident | _:Select => // ... but do want other unnamed terms.
         val varName  = if (synthetic) freshInternalVarName() else freshUserVarName()
@@ -478,7 +504,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
           if (trees.size == 1) "val " + varName + " =\n" + content
           else {
             // The position of the last tree
-            val lastpos0 = earliestPosition(trees.last)
+            val lastpos0 = earliestPosition(last)
             // Oh boy, the parser throws away parens so "(2+2)" is mispositioned,
             // with increasingly hard to decipher positions as we move on to "() => 5",
             // (x: Int) => x + 1, and more.  So I abandon attempts to finesse and just
@@ -554,8 +580,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
 
   var code = ""
   var bound = false
-  @throws(classOf[ScriptException])
-  def compile(script: String): CompiledScript = {
+  def compiled(script: String): CompiledScript = {
     if (!bound) {
       quietBind("engine" -> this.asInstanceOf[ScriptEngine])
       bound = true
@@ -582,18 +607,6 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     }
   }
 
-  @throws(classOf[ScriptException])
-  def compile(reader: Reader): CompiledScript = {
-    val writer = new StringWriter()
-    var c = reader.read()
-    while(c != -1) {
-      writer.write(c)
-      c = reader.read()
-    }
-    reader.close()
-    compile(writer.toString())
-  }
-
   private class WrappedRequest(val req: Request) extends CompiledScript {
     var recorded = false
 
@@ -604,7 +617,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
      *  escape. We could have wrapped runtime exceptions just like other
      *  exceptions in ScriptException, this is a choice.
      */
-    @throws(classOf[ScriptException])
+    @throws[ScriptException]
     def eval(context: ScriptContext): Object = {
       val result = req.lineRep.evalEither match {
         case Left(e: RuntimeException) => throw e
@@ -639,7 +652,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
       }
       else {
         // don't truncate stack traces
-        withoutTruncating(printMessage(result))
+        printUntruncatedMessage(result)
         IR.Error
       }
     }
@@ -722,7 +735,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
    *
    *  Read! Eval! Print! Some of that not yet centralized here.
    */
-  class ReadEvalPrint(lineId: Int) {
+  class ReadEvalPrint(val lineId: Int) {
     def this() = this(freshLineId())
 
     val packageName = sessionNames.line + lineId
@@ -736,21 +749,31 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
         throw t
 
       val unwrapped = unwrap(t)
+
+      // Example input: $line3.$read$$iw$$iw$
+      val classNameRegex = (naming.lineRegex + ".*").r
+      def isWrapperInit(x: StackTraceElement) = cond(x.getClassName) {
+        case classNameRegex() if x.getMethodName == nme.CONSTRUCTOR.decoded => true
+      }
+      val stackTrace = unwrapped stackTracePrefixString (!isWrapperInit(_))
+
       withLastExceptionLock[String]({
-        directBind[Throwable]("lastException", unwrapped)(tagOfThrowable, classTag[Throwable])
-        util.stackTraceString(unwrapped)
-      }, util.stackTraceString(unwrapped))
+        directBind[Throwable]("lastException", unwrapped)(StdReplTags.tagOfThrowable, classTag[Throwable])
+        stackTrace
+      }, stackTrace)
     }
 
     // TODO: split it out into a package object and a regular
     // object and we can do that much less wrapping.
     def packageDecl = "package " + packageName
 
+    def pathToInstance(name: String)   = packageName + "." + name + readInstanceName
     def pathTo(name: String)   = packageName + "." + name
     def packaged(code: String) = packageDecl + "\n\n" + code
 
-    def readPath  = pathTo(readName)
-    def evalPath  = pathTo(evalName)
+    def readPathInstance  = pathToInstance(readName)
+    def readPath = pathTo(readName)
+    def evalPath = pathTo(evalName)
 
     def call(name: String, args: Any*): AnyRef = {
       val m = evalMethod(name)
@@ -790,8 +813,9 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     /** The innermost object inside the wrapper, found by
       * following accessPath into the outer one.
       */
-    def resolvePathToSymbol(accessPath: String): Symbol = {
-      val readRoot  = getModuleIfDefined(readPath)   // the outermost wrapper
+    def resolvePathToSymbol(fullAccessPath: String): Symbol = {
+      val accessPath = fullAccessPath.stripPrefix(readPath)
+      val readRoot = readRootPath(readPath) // the outermost wrapper
       (accessPath split '.').foldLeft(readRoot: Symbol) {
         case (sym, "")    => sym
         case (sym, name)  => exitingTyper(termMember(sym, name))
@@ -815,7 +839,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
           }
           ((pos, msg)) :: loop(filtered)
       }
-      val warnings = loop(run.allConditionalWarnings flatMap (_.warnings))
+      val warnings = loop(run.reporting.allConditionalWarnings)
       if (warnings.nonEmpty)
         mostRecentWarnings = warnings
     }
@@ -837,7 +861,6 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     def defines    = defHandlers flatMap (_.definedSymbols)
     def imports    = importedSymbols
     def value      = Some(handlers.last) filter (h => h.definesValue) map (h => definedSymbols(h.definesTerm.get)) getOrElse NoSymbol
-
     val lineRep = new ReadEvalPrint()
 
     private var _originalLine: String = null
@@ -846,6 +869,11 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
 
     /** handlers for each tree in this request */
     val handlers: List[MemberHandler] = trees map (memberHandlers chooseHandler _)
+    val definesClass = handlers.exists {
+      case _: ClassHandler => true
+      case _ => false
+    }
+
     def defHandlers = handlers collect { case x: MemberDefHandler => x }
 
     /** list of names used by this expression */
@@ -862,39 +890,73 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     /** Code to import bound names from previous lines - accessPath is code to
       * append to objectName to access anything bound by request.
       */
-    val ComputedImports(importsPreamble, importsTrailer, accessPath) =
-      exitingTyper(importsCode(referencedNames.toSet))
+    lazy val ComputedImports(importsPreamble, importsTrailer, accessPath) =
+      exitingTyper(importsCode(referencedNames.toSet, ObjectSourceCode, definesClass))
 
     /** the line of code to compute */
     def toCompute = line
 
-    def fullPath(vname: String) = s"${lineRep.readPath}$accessPath.`$vname`"
+    /** The path of the value that contains the user code. */
+    def fullAccessPath = s"${lineRep.readPathInstance}$accessPath"
+
+    /** The path of the given member of the wrapping instance. */
+    def fullPath(vname: String) = s"$fullAccessPath.`$vname`"
 
     /** generate the source code for the object that computes this request */
-    private object ObjectSourceCode extends CodeAssembler[MemberHandler] {
+    abstract class Wrapper extends IMain.CodeAssembler[MemberHandler] {
       def path = originalPath("$intp")
       def envLines = {
         if (!isReplPower) Nil // power mode only for now
-        // $intp is not bound; punt, but include the line.
-        else if (path == "$intp") List(
-          "def $line = " + tquoted(originalLine),
-          "def $trees = Nil"
-        )
-        else List(
-          "def $line  = " + tquoted(originalLine),
-          "def $trees = Nil"
-        )
+        else List("def %s = %s".format("$line", tquoted(originalLine)), "def %s = Nil".format("$trees"))
       }
+      def preamble = s"""
+        |${preambleHeader format lineRep.readName}
+        |${envLines mkString ("  ", ";\n  ", ";\n")}
+        |$importsPreamble
+        |${indentCode(toCompute)}""".stripMargin
 
-      val preamble = """
-        |object %s {
-        |%s%s%s
-      """.stripMargin.format(lineRep.readName, envLines.map("  " + _ + ";\n").mkString, importsPreamble, indentCode(toCompute))
-      val postamble = importsTrailer + "\n}"
       val generate = (m: MemberHandler) => m extraCodeToEvaluate Request.this
+
+      /** A format string with %s for $read, specifying the wrapper definition. */
+      def preambleHeader: String
+
+      /** Like preambleHeader for an import wrapper. */
+      def prewrap: String = preambleHeader + "\n"
+
+      /** Like postamble for an import wrapper. */
+      def postwrap: String
     }
 
-    private object ResultObjectSourceCode extends CodeAssembler[MemberHandler] {
+    class ObjectBasedWrapper extends Wrapper {
+      def preambleHeader = "object %s {"
+
+      def postamble = importsTrailer + "\n}"
+
+      def postwrap = "}\n"
+    }
+
+    class ClassBasedWrapper extends Wrapper {
+      def preambleHeader = "class %s extends Serializable { "
+
+      /** Adds an object that instantiates the outer wrapping class. */
+      def postamble  = s"""
+                          |$importsTrailer
+                          |}
+                          |object ${lineRep.readName} {
+                          |   val INSTANCE = new ${lineRep.readName}();
+                          |}
+                          |""".stripMargin
+
+      import nme.{ INTERPRETER_IMPORT_WRAPPER => iw }
+
+      /** Adds a val that instantiates the wrapping class. */
+      def postwrap = s"}\nval $iw = new $iw\n"
+    }
+
+    private lazy val ObjectSourceCode: Wrapper =
+      if (isClassBased) new ClassBasedWrapper else new ObjectBasedWrapper
+
+    private object ResultObjectSourceCode extends IMain.CodeAssembler[MemberHandler] {
       /** We only want to generate this code when the result
        *  is a value which can be referred to as-is.
        */
@@ -912,7 +974,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
       |    (""
       """.stripMargin.format(
         lineRep.evalName, evalResult, lineRep.printName,
-        executionWrapper, lineRep.readName + accessPath
+        executionWrapper, fullAccessPath
       )
 
       val postamble = """
@@ -946,11 +1008,12 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
         }
 
         // compile the result-extraction object
-        withoutWarnings(lineRep compile ResultObjectSourceCode(handlers))
+        val handls = if (printResults) handlers else Nil
+        withoutWarnings(lineRep compile ResultObjectSourceCode(handls))
       }
     }
 
-    lazy val resultSymbol = lineRep.resolvePathToSymbol(accessPath)
+    lazy val resultSymbol = lineRep.resolvePathToSymbol(fullAccessPath)
     def applyToResultMember[T](name: Name, f: Symbol => T) = exitingTyper(f(resultSymbol.info.nonPrivateDecl(name)))
 
     /* typeOf lookup with encoding */
@@ -993,11 +1056,17 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     }
   }
 
-  @throws(classOf[ScriptException])
-  def eval(script: String, context: ScriptContext): Object = compile(script).eval(context)
+  @throws[ScriptException]
+  def compile(script: String): CompiledScript = eval("new javax.script.CompiledScript { def eval(context: javax.script.ScriptContext): Object = { " + script + " }.asInstanceOf[Object]; def getEngine: javax.script.ScriptEngine = engine }").asInstanceOf[CompiledScript]
 
-  @throws(classOf[ScriptException])
-  def eval(reader: Reader, context: ScriptContext): Object = compile(reader).eval(context)
+  @throws[ScriptException]
+  def compile(reader: java.io.Reader): CompiledScript = compile(stringFromReader(reader))
+
+  @throws[ScriptException]
+  def eval(script: String, context: ScriptContext): Object = compiled(script).eval(context)
+
+  @throws[ScriptException]
+  def eval(reader: java.io.Reader, context: ScriptContext): Object = eval(stringFromReader(reader), context)
 
   override def finalize = close
 
@@ -1018,7 +1087,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   def lastWarnings = mostRecentWarnings
 
   private lazy val importToGlobal  = global mkImporter ru
-  private lazy val importToRuntime = ru mkImporter global
+  private lazy val importToRuntime = ru.internal createImporter global
   private lazy val javaMirror = ru.rootMirror match {
     case x: ru.JavaMirror => x
     case _                => null
@@ -1056,8 +1125,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
   def tryTwice(op: => Symbol): Symbol = exitingTyper(op) orElse exitingFlatten(op)
 
   def symbolOfIdent(id: String): Symbol  = symbolOfType(id) orElse symbolOfTerm(id)
-  def symbolOfType(id: String): Symbol   = tryTwice(replScope lookup (id: TypeName))
-  def symbolOfTerm(id: String): Symbol   = tryTwice(replScope lookup (id: TermName))
+  def symbolOfType(id: String): Symbol   = tryTwice(replScope lookup TypeName(id))
+  def symbolOfTerm(id: String): Symbol   = tryTwice(replScope lookup TermName(id))
   def symbolOfName(id: Name): Symbol     = replScope lookup id
 
   def runtimeClassAndTypeOfTerm(id: String): Option[(JClass, Type)] = {
@@ -1096,7 +1165,24 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     val repl: IMain.this.type = imain
   } with ExprTyper { }
 
-  def parse(line: String): Option[List[Tree]] = exprTyper.parse(line)
+  /** Parse a line into and return parsing result (error, incomplete or success with list of trees) */
+  object parse {
+    abstract sealed class Result
+    case object Error extends Result
+    case object Incomplete extends Result
+    case class Success(trees: List[Tree]) extends Result
+
+    def apply(line: String): Result = debugging(s"""parse("$line")""")  {
+      var isIncomplete = false
+      currentRun.parsing.withIncompleteHandler((_, _) => isIncomplete = true) {
+        reporter.reset()
+        val trees = newUnitParser(line).parseStats()
+        if (reporter.hasErrors) Error
+        else if (isIncomplete) Incomplete
+        else Success(trees)
+      }
+    }
+  }
 
   def symbolOfLine(code: String): Symbol =
     exprTyper.symbolOfLine(code)
@@ -1141,6 +1227,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     finally isettings.unwrapStrings = saved
   }
 
+  def withoutTruncating[A](body: => A): A = reporter withoutTruncating body
+
   def symbolDefString(sym: Symbol) = {
     TypeStrings.quieter(
       exitingTyper(sym.defString),
@@ -1155,10 +1243,12 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
      */
     def isShow = code.lines exists (_.trim endsWith "// show")
     if (isReplDebug || isShow) {
-      beSilentDuring(parse(code)) foreach { ts =>
-        ts foreach { t =>
-          withoutUnwrapping(echo(asCompactString(t)))
-        }
+      beSilentDuring(parse(code)) match {
+        case parse.Success(ts) =>
+          ts foreach { t =>
+            withoutUnwrapping(echo(asCompactString(t)))
+          }
+        case _ =>
       }
     }
   }
@@ -1172,6 +1262,8 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
 
 /** Utility methods for the Interpreter. */
 object IMain {
+  import java.util.Arrays.{ asList => asJavaList }
+
   class Factory extends ScriptEngineFactory {
     @BeanProperty
     val engineName = "Scala Interpreter"
@@ -1180,21 +1272,21 @@ object IMain {
     val engineVersion = "1.0"
 
     @BeanProperty
-    val extensions: JList[String] = Arrays.asList("scala")
+    val extensions: JList[String] = asJavaList("scala")
 
     @BeanProperty
     val languageName = "Scala"
 
     @BeanProperty
-    val languageVersion = versionString
+    val languageVersion = scala.util.Properties.versionString
 
     def getMethodCallSyntax(obj: String, m: String, args: String*): String = null
 
     @BeanProperty
-    val mimeTypes: JList[String] = Arrays.asList("application/x-scala")
+    val mimeTypes: JList[String] = asJavaList("application/x-scala")
 
     @BeanProperty
-    val names: JList[String] = Arrays.asList("scala")
+    val names: JList[String] = asJavaList("scala")
 
     def getOutputStatement(toDisplay: String): String = null
 
@@ -1209,9 +1301,11 @@ object IMain {
 
     def getProgram(statements: String*): String = null
 
-    def getScriptEngine: ScriptEngine = new IMain(this, new Settings() {
-      usemanifestcp.value = true
-    })
+    def getScriptEngine: ScriptEngine = {
+      val settings = new Settings()
+      settings.usemanifestcp.value = true
+      new IMain(this, settings)
+    }
   }
 
   // The two name forms this is catching are the two sides of this assignment:

@@ -7,36 +7,38 @@ package scala.tools.nsc
 package backend
 
 import io.AbstractFile
-import util.{ClassPath,MergedClassPath,DeltaClassPath}
+import scala.tools.nsc.classpath.FlatClassPath
+import scala.tools.nsc.settings.ClassPathRepresentationType
+import scala.tools.nsc.util.{ ClassPath, DeltaClassPath, MergedClassPath }
+import scala.tools.util.FlatClassPathResolver
 import scala.tools.util.PathResolver
 
 trait JavaPlatform extends Platform {
+  val global: Global
+  override val symbolTable: global.type = global
   import global._
   import definitions._
 
-  type BinaryRepr = AbstractFile
+  private[nsc] var currentClassPath: Option[MergedClassPath[AbstractFile]] = None
 
-  private var currentClassPath: Option[MergedClassPath[BinaryRepr]] = None
+  def classPath: ClassPath[AbstractFile] = {
+    assert(settings.YclasspathImpl.value == ClassPathRepresentationType.Recursive,
+      "To use recursive classpath representation you must enable it with -YclasspathImpl:recursive compiler option.")
 
-  def classPath: ClassPath[BinaryRepr] = {
     if (currentClassPath.isEmpty) currentClassPath = Some(new PathResolver(settings).result)
     currentClassPath.get
   }
 
-  /** Update classpath with a substituted subentry */
-  def updateClassPath(subst: Map[ClassPath[BinaryRepr], ClassPath[BinaryRepr]]) =
-    currentClassPath = Some(new DeltaClassPath(currentClassPath.get, subst))
+  private[nsc] lazy val flatClassPath: FlatClassPath = {
+    assert(settings.YclasspathImpl.value == ClassPathRepresentationType.Flat,
+      "To use flat classpath representation you must enable it with -YclasspathImpl:flat compiler option.")
 
-  def rootLoader = new loaders.PackageLoader(classPath.asInstanceOf[ClassPath[platform.BinaryRepr]])
-    // [Martin] Why do we need a cast here?
-    // The problem is that we cannot specify at this point that global.platform should be of type JavaPlatform.
-    // So we cannot infer that global.platform.BinaryRepr is AbstractFile.
-    // Ideally, we should be able to write at the top of the JavaPlatform trait:
-    //   val global: Global { val platform: JavaPlatform }
-    //   import global._
-    // Right now, this does nothing because the concrete definition of platform in Global
-    // replaces the tighter abstract definition here. If we had DOT typing rules, the two
-    // types would be conjoined and everything would work out. Yet another reason to push for DOT.
+    new FlatClassPathResolver(settings).result
+  }
+
+  /** Update classpath with a substituted subentry */
+  def updateClassPath(subst: Map[ClassPath[AbstractFile], ClassPath[AbstractFile]]) =
+    currentClassPath = Some(new DeltaClassPath(currentClassPath.get, subst))
 
   private def classEmitPhase =
     if (settings.isBCodeActive) genBCode
@@ -65,11 +67,6 @@ trait JavaPlatform extends Platform {
     (sym isNonBottomSubClass BoxedCharacterClass) ||
     (sym isNonBottomSubClass BoxedBooleanClass)
   }
-
-  def newClassLoader(bin: AbstractFile): loaders.SymbolLoader =
-    new loaders.ClassfileLoader(bin)
-
-  def doLoad(cls: ClassPath[BinaryRepr]#ClassRep): Boolean = true
 
   def needCompile(bin: AbstractFile, src: AbstractFile) =
     src.lastModified >= bin.lastModified

@@ -12,7 +12,7 @@ import scala.language.postfixOps
 import scala.tools.nsc.transform.TypingTransformers
 import scala.tools.nsc.transform.Transform
 import scala.reflect.internal.util.Statistics
-import scala.reflect.internal.Types
+import scala.reflect.internal.{Mode, Types}
 import scala.reflect.internal.util.Position
 
 /** Translate pattern matching.
@@ -34,16 +34,20 @@ import scala.reflect.internal.util.Position
   *  - recover GADT typing by locally inserting implicit witnesses to type equalities derived from the current case, and considering these witnesses during subtyping (?)
   *  - recover exhaustivity/unreachability of user-defined extractors by partitioning the types they match on using an HList or similar type-level structure
   */
-trait PatternMatching extends Transform with TypingTransformers
+trait PatternMatching extends Transform
+                      with TypingTransformers
                       with Debugging
                       with Interface
                       with MatchTranslation
                       with MatchTreeMaking
                       with MatchCodeGen
+                      with MatchCps
                       with ScalaLogic
                       with Solving
                       with MatchAnalysis
-                      with MatchOptimization {
+                      with MatchOptimization
+                      with MatchWarnings
+                      with ScalacPatternExpanders {
   import global._
 
   val phaseName: String = "patmat"
@@ -61,7 +65,7 @@ trait PatternMatching extends Transform with TypingTransformers
         } catch {
           case x: (Types#TypeError) =>
             // TODO: this should never happen; error should've been reported during type checking
-            unit.error(tree.pos, "error during expansion of this match (this is a scalac bug).\nThe underlying error was: "+ x.msg)
+            reporter.error(tree.pos, "error during expansion of this match (this is a scalac bug).\nThe underlying error was: "+ x.msg)
             translated
         }
       case Try(block, catches, finalizer) =>
@@ -94,12 +98,16 @@ trait Debugging {
   // TODO: the inliner fails to inline the closures to debug.patmat unless the method is nested in an object
   object debug {
     val printPatmat = global.settings.Ypatmatdebug.value
-    @inline final def patmat(s: => String) = if (printPatmat) println(s)
+    @inline final def patmat(s: => String) = if (printPatmat) Console.err.println(s)
+    @inline final def patmatResult[T](s: => String)(result: T): T = {
+      if (printPatmat) Console.err.println(s + ": " + result)
+      result
+    }
   }
 }
 
 trait Interface extends ast.TreeDSL {
-  import global.{newTermName, analyzer, Type, ErrorType, Symbol, Tree}
+  import global._
   import analyzer.Typer
 
   // 2.10/2.11 compatibility
@@ -110,7 +118,6 @@ trait Interface extends ast.TreeDSL {
 
   object vpmName {
     val one       = newTermName("one")
-    val drop      = newTermName("drop")
     val flatMap   = newTermName("flatMap")
     val get       = newTermName("get")
     val guard     = newTermName("guard")
@@ -166,25 +173,16 @@ trait Interface extends ast.TreeDSL {
   trait MatchMonadInterface {
     val typer: Typer
     val matchOwner = typer.context.owner
+    def pureType(tp: Type): Type = tp
 
-    def reportUnreachable(pos: Position) = typer.context.unit.warning(pos, "unreachable code")
+    def reportUnreachable(pos: Position) = reporter.warning(pos, "unreachable code")
     def reportMissingCases(pos: Position, counterExamples: List[String]) = {
       val ceString =
         if (counterExamples.tail.isEmpty) "input: " + counterExamples.head
         else "inputs: " + counterExamples.mkString(", ")
 
-      typer.context.unit.warning(pos, "match may not be exhaustive.\nIt would fail on the following "+ ceString)
+      reporter.warning(pos, "match may not be exhaustive.\nIt would fail on the following "+ ceString)
     }
-
-    def inMatchMonad(tp: Type): Type
-    def pureType(tp: Type): Type
-    final def matchMonadResult(tp: Type): Type =
-      tp.baseType(matchMonadSym).typeArgs match {
-        case arg :: Nil => arg
-        case _ => ErrorType
-      }
-
-    protected def matchMonadSym: Symbol
   }
 
 
@@ -200,33 +198,62 @@ trait Interface extends ast.TreeDSL {
     }
 
     class Substitution(val from: List[Symbol], val to: List[Tree]) {
-      import global.{Transformer, Ident, NoType}
+      import global.{Transformer, Ident, NoType, TypeTree, SingleType}
 
       // We must explicitly type the trees that we replace inside some other tree, since the latter may already have been typed,
       // and will thus not be retyped. This means we might end up with untyped subtrees inside bigger, typed trees.
       def apply(tree: Tree): Tree = {
         // according to -Ystatistics 10% of translateMatch's time is spent in this method...
         // since about half of the typedSubst's end up being no-ops, the check below shaves off 5% of the time spent in typedSubst
-        if (!tree.exists { case i@Ident(_) => from contains i.symbol case _ => false}) tree
-        else (new Transformer {
+        val toIdents = to.forall(_.isInstanceOf[Ident])
+        val containsSym = tree.exists {
+          case i@Ident(_) => from contains i.symbol
+          case tt: TypeTree => tt.tpe.exists {
+            case SingleType(_, sym) =>
+              (from contains sym) && {
+                if (!toIdents) global.devWarning(s"Unexpected substitution of non-Ident into TypeTree `$tt`, subst= $this")
+                true
+              }
+            case _ => false
+          }
+          case _          => false
+        }
+        val toSyms = to.map(_.symbol)
+        object substIdentsForTrees extends Transformer {
           private def typedIfOrigTyped(to: Tree, origTp: Type): Tree =
             if (origTp == null || origTp == NoType) to
             // important: only type when actually substing and when original tree was typed
             // (don't need to use origTp as the expected type, though, and can't always do this anyway due to unknown type params stemming from polymorphic extractors)
             else typer.typed(to)
 
+          def typedStable(t: Tree) = typer.typed(t.shallowDuplicate, Mode.MonoQualifierModes | Mode.TYPEPATmode)
+          lazy val toTypes: List[Type] = to map (tree => typedStable(tree).tpe)
+
           override def transform(tree: Tree): Tree = {
             def subst(from: List[Symbol], to: List[Tree]): Tree =
               if (from.isEmpty) tree
-              else if (tree.symbol == from.head) typedIfOrigTyped(to.head.shallowDuplicate.setPos(tree.pos), tree.tpe)
+              else if (tree.symbol == from.head) typedIfOrigTyped(typedStable(to.head).setPos(tree.pos), tree.tpe)
               else subst(from.tail, to.tail)
 
-            tree match {
+            val tree1 = tree match {
               case Ident(_) => subst(from, to)
               case _        => super.transform(tree)
             }
+            tree1 match {
+              case _: DefTree =>
+                tree1.symbol.modifyInfo(_.substituteTypes(from, toTypes))
+              case _ =>
+            }
+            tree1.modifyType(_.substituteTypes(from, toTypes))
           }
-        }).transform(tree)
+        }
+        if (containsSym) {
+          if (to.forall(_.isInstanceOf[Ident]))
+            tree.duplicate.substituteSymbols(from, to.map(_.symbol)) // SI-7459 catches `case t => new t.Foo`
+          else
+            substIdentsForTrees.transform(tree)
+        }
+        else tree
       }
 
 

@@ -15,7 +15,7 @@ import base.comment._
 
 import model._
 import model.diagram._
-import scala.xml.{ NodeSeq, Text, UnprefixedAttribute }
+import scala.xml.{Elem, NodeSeq, Text, UnprefixedAttribute}
 import scala.language.postfixOps
 import scala.collection.mutable. { Set, HashSet }
 
@@ -89,7 +89,7 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
     val templateName = if (tpl.isRootPackage) "root package" else tpl.name
     val displayName = tpl.companion match {
       case Some(companion) if (companion.visibility.isPublic && companion.inSource != None) =>
-        <a href={relativeLinkTo(companion)} title="Go to companion">{ templateName }</a>
+        <a href={relativeLinkTo(companion)} title={docEntityKindToCompanionTitle(tpl)}>{ templateName }</a>
       case _ =>
         templateName
     }
@@ -103,14 +103,18 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
     <body class={ if (tpl.isType) "type" else "value" }>
       <div id="definition">
         {
+          val (src, alt) = docEntityKindToBigImage(tpl)
+
           tpl.companion match {
             case Some(companion) if (companion.visibility.isPublic && companion.inSource != None) =>
-              <a href={relativeLinkTo(companion)} title="Go to companion"><img src={ relativeLinkTo(List(docEntityKindToBigImage(tpl), "lib")) }/></a>
+              <a href={relativeLinkTo(companion)} title={docEntityKindToCompanionTitle(tpl)}><img alt={alt} src={ relativeLinkTo(List(src, "lib")) }/></a>
             case _ =>
-              <img src={ relativeLinkTo(List(docEntityKindToBigImage(tpl), "lib")) }/>
+              <img alt={alt} src={ relativeLinkTo(List(src, "lib")) }/>
         }}
         { owner }
-        <h1>{ displayName }</h1>
+        <h1>{ displayName }</h1>{
+          if (tpl.isPackage) NodeSeq.Empty else <h3>{companionAndPackage(tpl)}</h3>
+        }{ permalink(tpl) }
       </div>
 
       { signature(tpl, isSelf = true) }
@@ -173,7 +177,6 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
               <li class="hideall out"><span>Hide All</span></li>
               <li class="showall in"><span>Show all</span></li>
             </ol>
-            <a href="http://docs.scala-lang.org/overviews/scaladoc/usage.html#members" target="_blank">Learn more about member selection</a>
           </div>
         }
         {
@@ -306,9 +309,6 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
         <xml:group>
           <div id="comment" class="fullcommenttop">{ memberToCommentBodyHtml(mbr, inTpl, isSelf = true) }</div>
         </xml:group>
-      case dte: DocTemplateEntity if mbr.comment.isDefined =>
-        // comment of inner, documented class (only short comment, full comment is on the class' own page)
-        memberToInlineCommentHtml(mbr, isSelf)
       case _ =>
         // comment of non-class member or non-documentented inner class
         val commentBody = memberToCommentBodyHtml(mbr, inTpl, isSelf = false)
@@ -350,6 +350,14 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
     val memberComment =
       if (mbr.comment.isEmpty) NodeSeq.Empty
       else <div class="comment cmt">{ commentToHtml(mbr.comment) }</div>
+
+    val authorComment =
+      if (! s.docAuthor || mbr.comment.isEmpty ||
+        mbr.comment.isDefined && mbr.comment.get.authors.isEmpty) NodeSeq.Empty
+      else <div class="comment cmt">
+        {if (mbr.comment.get.authors.size > 1) <h6>Authors:</h6> else <h6>Author:</h6>}
+        { mbr.comment.get.authors map bodyToHtml}
+      </div>
 
     val paramComments = {
       val prs: List[ParameterEntity] = mbr match {
@@ -600,7 +608,7 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
             <dd>{
               val exceptionsXml: List[NodeSeq] =
                 for((name, body) <- comment.throws.toList.sortBy(_._1) ) yield
-                  <span class="cmt">{Text(name) ++ bodyToHtml(body)}</span>
+                  <span class="cmt">{bodyToHtml(body)}</span>
               exceptionsXml.reduceLeft(_ ++ Text("") ++ _)
             }</dd>
           }
@@ -681,7 +689,7 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
     val typeHierarchy = createDiagram(_.inheritanceDiagram, "Type Hierarchy", "inheritance-diagram")
     val contentHierarchy = createDiagram(_.contentDiagram, "Content Hierarchy", "content-diagram")
 
-    memberComment ++ paramComments ++ attributesBlock ++ linearization ++ subclasses ++ typeHierarchy ++ contentHierarchy
+    memberComment ++ authorComment ++ paramComments ++ attributesBlock ++ linearization ++ subclasses ++ typeHierarchy ++ contentHierarchy
   }
 
   def boundsToHtml(hi: Option[TypeEntity], lo: Option[TypeEntity], hasLinks: Boolean): NodeSeq = {
@@ -715,6 +723,7 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
 
   /** name, tparams, params, result */
   def signature(mbr: MemberEntity, isSelf: Boolean, isReduced: Boolean = false): NodeSeq = {
+
     def inside(hasLinks: Boolean, nameLink: String = ""): NodeSeq =
       <xml:group>
       <span class="modifier_kind">
@@ -825,11 +834,11 @@ class Template(universe: doc.Universe, generator: DiagramGenerator, tpl: DocTemp
       </xml:group>
     mbr match {
       case dte: DocTemplateEntity if !isSelf =>
-        <h4 class="signature">{ inside(hasLinks = true, nameLink = relativeLinkTo(dte)) }</h4>
+        <h4 class="signature">{ inside(hasLinks = true, nameLink = relativeLinkTo(dte)) }</h4> ++ permalink(dte, isSelf)
       case _ if isSelf =>
         <h4 id="signature" class="signature">{ inside(hasLinks = true) }</h4>
       case _ =>
-        <h4 class="signature">{ inside(hasLinks = true) }</h4>
+        <h4 class="signature">{ inside(hasLinks = true) }</h4> ++ permalink(mbr)
     }
 
   }

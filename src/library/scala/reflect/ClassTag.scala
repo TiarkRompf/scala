@@ -2,8 +2,7 @@ package scala
 package reflect
 
 import java.lang.{ Class => jClass }
-import scala.language.{implicitConversions, existentials}
-import scala.runtime.ScalaRunTime.{ arrayClass, arrayElementClass }
+import scala.runtime.ScalaRunTime.arrayElementClass
 
 /**
  *
@@ -28,7 +27,7 @@ import scala.runtime.ScalaRunTime.{ arrayClass, arrayElementClass }
  *   scala> mkArray("Japan","Brazil","Germany")
  *   res1: Array[String] = Array(Japan, Brazil, Germany)
  * }}}
- * 
+ *
  * See [[scala.reflect.api.TypeTags]] for more examples, or the
  * [[http://docs.scala-lang.org/overviews/reflection/typetags-manifests.html Reflection Guide: TypeTags]]
  * for more details.
@@ -70,26 +69,35 @@ trait ClassTag[T] extends ClassManifestDeprecatedApis[T] with Equals with Serial
    * `SomeExtractor(...)` is turned into `ct(SomeExtractor(...))` if `T` in `SomeExtractor.unapply(x: T)`
    * is uncheckable, but we have an instance of `ClassTag[T]`.
    */
-  def unapply(x: Any): Option[T] = unapply_impl(x)
-  def unapply(x: Byte): Option[T] = unapply_impl(x)
-  def unapply(x: Short): Option[T] = unapply_impl(x)
-  def unapply(x: Char): Option[T] = unapply_impl(x)
-  def unapply(x: Int): Option[T] = unapply_impl(x)
-  def unapply(x: Long): Option[T] = unapply_impl(x)
-  def unapply(x: Float): Option[T] = unapply_impl(x)
-  def unapply(x: Double): Option[T] = unapply_impl(x)
-  def unapply(x: Boolean): Option[T] = unapply_impl(x)
-  def unapply(x: Unit): Option[T] = unapply_impl(x)
+  def unapply(x: Any): Option[T] =
+    if (null != x && (
+            (runtimeClass.isInstance(x))
+         || (x.isInstanceOf[Byte]    && runtimeClass.isAssignableFrom(classOf[Byte]))
+         || (x.isInstanceOf[Short]   && runtimeClass.isAssignableFrom(classOf[Short]))
+         || (x.isInstanceOf[Char]    && runtimeClass.isAssignableFrom(classOf[Char]))
+         || (x.isInstanceOf[Int]     && runtimeClass.isAssignableFrom(classOf[Int]))
+         || (x.isInstanceOf[Long]    && runtimeClass.isAssignableFrom(classOf[Long]))
+         || (x.isInstanceOf[Float]   && runtimeClass.isAssignableFrom(classOf[Float]))
+         || (x.isInstanceOf[Double]  && runtimeClass.isAssignableFrom(classOf[Double]))
+         || (x.isInstanceOf[Boolean] && runtimeClass.isAssignableFrom(classOf[Boolean]))
+         || (x.isInstanceOf[Unit]    && runtimeClass.isAssignableFrom(classOf[Unit])))
+       ) Some(x.asInstanceOf[T])
+    else None
 
-  private def unapply_impl[U: ClassTag](x: U): Option[T] =
-    if (x == null) None
-    else {
-      val staticClass = classTag[U].runtimeClass
-      val dynamicClass = x.getClass
-      val effectiveClass = if (staticClass.isPrimitive) staticClass else dynamicClass
-      val conforms = runtimeClass.isAssignableFrom(effectiveClass)
-      if (conforms) Some(x.asInstanceOf[T]) else None
-    }
+  // TODO: deprecate overloads in 2.12.0, remove in 2.13.0
+  def unapply(x: Byte)    : Option[T] = unapplyImpl(x, classOf[Byte])
+  def unapply(x: Short)   : Option[T] = unapplyImpl(x, classOf[Short])
+  def unapply(x: Char)    : Option[T] = unapplyImpl(x, classOf[Char])
+  def unapply(x: Int)     : Option[T] = unapplyImpl(x, classOf[Int])
+  def unapply(x: Long)    : Option[T] = unapplyImpl(x, classOf[Long])
+  def unapply(x: Float)   : Option[T] = unapplyImpl(x, classOf[Float])
+  def unapply(x: Double)  : Option[T] = unapplyImpl(x, classOf[Double])
+  def unapply(x: Boolean) : Option[T] = unapplyImpl(x, classOf[Boolean])
+  def unapply(x: Unit)    : Option[T] = unapplyImpl(x, classOf[Unit])
+
+  private[this] def unapplyImpl(x: Any, primitiveCls: java.lang.Class[_]): Option[T] =
+    if (runtimeClass.isInstance(x) || runtimeClass.isAssignableFrom(primitiveCls)) Some(x.asInstanceOf[T])
+    else None
 
   // case class accessories
   override def canEqual(x: Any) = x.isInstanceOf[ClassTag[_]]

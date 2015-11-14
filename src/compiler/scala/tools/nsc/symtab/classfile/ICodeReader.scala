@@ -20,6 +20,8 @@ import scala.reflect.internal.JavaAccFlags
  */
 abstract class ICodeReader extends ClassfileParser {
   val global: Global
+  val symbolTable: global.type
+  val loaders: global.loaders.type
   import global._
   import icodes._
 
@@ -27,6 +29,95 @@ abstract class ICodeReader extends ClassfileParser {
   var staticCode:   IClass = null          // the ICode class static members
   var method: IMethod = NoIMethod          // the current IMethod
   var isScalaModule = false
+
+  override protected type ThisConstantPool = ICodeConstantPool
+  override protected def newConstantPool = new ICodeConstantPool
+
+  /** Try to force the chain of enclosing classes for the given name. Otherwise
+   *  flatten would not lift classes that were not referenced in the source code.
+   */
+  def forceMangledName(name: Name, module: Boolean): Symbol = {
+    val parts = name.decode.toString.split(Array('.', '$'))
+    var sym: Symbol = rootMirror.RootClass
+
+    // was "at flatten.prev"
+    enteringFlatten {
+      for (part0 <- parts; if !(part0 == ""); part = newTermName(part0)) {
+        val sym1 = enteringIcode {
+          sym.linkedClassOfClass.info
+          sym.info.decl(part.encode)
+        }//.suchThat(module == _.isModule)
+
+        sym = sym1 orElse sym.info.decl(part.encode.toTypeName)
+      }
+    }
+    sym
+  }
+
+  protected class ICodeConstantPool extends ConstantPool {
+    /** Return the symbol of the class member at `index`.
+     *  The following special cases exist:
+     *   - If the member refers to special `MODULE$` static field, return
+     *  the symbol of the corresponding module.
+     *   - If the member is a field, and is not found with the given name,
+     *     another try is made by appending `nme.LOCAL_SUFFIX_STRING`
+     *   - If no symbol is found in the right tpe, a new try is made in the
+     *     companion class, in case the owner is an implementation class.
+     */
+    def getMemberSymbol(index: Int, static: Boolean): Symbol = {
+      if (index <= 0 || len <= index) errorBadIndex(index)
+      var f = values(index).asInstanceOf[Symbol]
+      if (f eq null) {
+        val start = starts(index)
+        val first = in.buf(start).toInt
+        if (first != CONSTANT_FIELDREF &&
+            first != CONSTANT_METHODREF &&
+            first != CONSTANT_INTFMETHODREF) errorBadTag(start)
+        val ownerTpe = getClassOrArrayType(in.getChar(start + 1).toInt)
+        debuglog("getMemberSymbol(static: " + static + "): owner type: " + ownerTpe + " " + ownerTpe.typeSymbol.unexpandedName)
+        val (name0, tpe0) = getNameAndType(in.getChar(start + 3).toInt, ownerTpe)
+        debuglog("getMemberSymbol: name and tpe: " + name0 + ": " + tpe0)
+
+        forceMangledName(tpe0.typeSymbol.name, module = false)
+        val (name, tpe) = getNameAndType(in.getChar(start + 3).toInt, ownerTpe)
+        if (name == nme.MODULE_INSTANCE_FIELD) {
+          val index = in.getChar(start + 1).toInt
+          val name = getExternalName(in.getChar(starts(index).toInt + 1).toInt)
+          //assert(name.endsWith("$"), "Not a module class: " + name)
+          f = forceMangledName(name dropRight 1, module = true)
+          if (f == NoSymbol)
+            f = rootMirror.getModuleByName(name dropRight 1)
+        } else {
+          val origName = nme.unexpandedName(name)
+          val owner = if (static) ownerTpe.typeSymbol.linkedClassOfClass else ownerTpe.typeSymbol
+          f = owner.info.findMember(origName, 0, 0, stableOnly = false).suchThat(_.tpe.widen =:= tpe)
+          if (f == NoSymbol)
+            f = owner.info.findMember(newTermName(origName + nme.LOCAL_SUFFIX_STRING), 0, 0, stableOnly = false).suchThat(_.tpe =:= tpe)
+          if (f == NoSymbol) {
+            // if it's an impl class, try to find it's static member inside the class
+            if (ownerTpe.typeSymbol.isImplClass) {
+              f = ownerTpe.findMember(origName, 0, 0, stableOnly = false).suchThat(_.tpe =:= tpe)
+            } else {
+              log("Couldn't find " + name + ": " + tpe + " inside: \n" + ownerTpe)
+              f = tpe match {
+                case MethodType(_, _) => owner.newMethod(name.toTermName, owner.pos)
+                case _                => owner.newVariable(name.toTermName, owner.pos)
+              }
+              f setInfo tpe
+              log("created fake member " + f.fullName)
+            }
+          }
+        }
+        assert(f != NoSymbol,
+          s"could not find $name: $tpe in $ownerTpe" + (
+            if (settings.debug.value) ownerTpe.members.mkString(", members are:\n  ", "\n  ", "") else ""
+          )
+        )
+        values(index) = f
+      }
+      f
+    }
+  }
 
   /** Read back bytecode for the given class symbol. It returns
    *  two IClass objects, one for static members and one
@@ -39,7 +130,7 @@ abstract class ICodeReader extends ClassfileParser {
     log("ICodeReader reading " + cls)
     val name = cls.javaClassName
 
-    classPath.findSourceFile(name) match {
+    classFileLookup.findClassFile(name) match {
       case Some(classFile) => parse(classFile, cls)
       case _               => MissingRequirementError.notFound("Could not find bytecode for " + cls)
     }
@@ -484,23 +575,28 @@ abstract class ICodeReader extends ClassfileParser {
         case JVM.invokevirtual =>
           val m = pool.getMemberSymbol(u2, static = false); size += 2
           code.emit(CALL_METHOD(m, Dynamic))
+          method.updateRecursive(m)
         case JVM.invokeinterface  =>
           val m = pool.getMemberSymbol(u2, static = false); size += 4
           in.skip(2)
           code.emit(CALL_METHOD(m, Dynamic))
+          // invokeinterface can't be recursive
         case JVM.invokespecial   =>
           val m = pool.getMemberSymbol(u2, static = false); size += 2
           val style = if (m.name == nme.CONSTRUCTOR || m.isPrivate) Static(onInstance = true)
                       else SuperCall(m.owner.name)
           code.emit(CALL_METHOD(m, style))
+          method.updateRecursive(m)
         case JVM.invokestatic    =>
           val m = pool.getMemberSymbol(u2, static = true); size += 2
           if (isBox(m))
             code.emit(BOX(toTypeKind(m.info.paramTypes.head)))
           else if (isUnbox(m))
             code.emit(UNBOX(toTypeKind(m.info.resultType)))
-          else
+          else {
             code.emit(CALL_METHOD(m, Static(onInstance = false)))
+            method.updateRecursive(m)
+          }
         case JVM.invokedynamic  =>
           // TODO, this is just a place holder. A real implementation must parse the class constant entry
           debuglog("Found JVM invokedynamic instructionm, inserting place holder ICode INVOKE_DYNAMIC.")
@@ -684,32 +780,40 @@ abstract class ICodeReader extends ClassfileParser {
           bb = otherBlock
 //          Console.println("\t> entering bb: " + bb)
         }
-        instr match {
-          case LJUMP(target) =>
-            otherBlock = blocks(target)
-            bb.emitOnly(JUMP(otherBlock))
 
-          case LCJUMP(success, failure, cond, kind) =>
-            otherBlock = blocks(success)
-            val failBlock = blocks(failure)
-            bb.emitOnly(CJUMP(otherBlock, failBlock, cond, kind))
+        if (bb.closed) {
+          // the basic block is closed, i.e. the previous instruction was a jump, return or throw,
+          // but the next instruction is not a jump target. this means that the next instruction is
+          // dead code. we can therefore advance until the next jump target.
+          debuglog(s"ICode reader skipping dead instruction $instr in classfile $instanceCode")
+        } else {
+          instr match {
+            case LJUMP(target) =>
+              otherBlock = blocks(target)
+              bb.emitOnly(JUMP(otherBlock))
 
-          case LCZJUMP(success, failure, cond, kind) =>
-            otherBlock = blocks(success)
-            val failBlock = blocks(failure)
-            bb.emitOnly(CZJUMP(otherBlock, failBlock, cond, kind))
+            case LCJUMP(success, failure, cond, kind) =>
+              otherBlock = blocks(success)
+              val failBlock = blocks(failure)
+              bb.emitOnly(CJUMP(otherBlock, failBlock, cond, kind))
 
-          case LSWITCH(tags, targets) =>
-            bb.emitOnly(SWITCH(tags, targets map blocks))
+            case LCZJUMP(success, failure, cond, kind) =>
+              otherBlock = blocks(success)
+              val failBlock = blocks(failure)
+              bb.emitOnly(CZJUMP(otherBlock, failBlock, cond, kind))
 
-          case RETURN(_) =>
-            bb emitOnly instr
+            case LSWITCH(tags, targets) =>
+              bb.emitOnly(SWITCH(tags, targets map blocks))
 
-          case THROW(clasz) =>
-            bb emitOnly instr
+            case RETURN(_) =>
+              bb emitOnly instr
 
-          case _ =>
-            bb emit instr
+            case THROW(clasz) =>
+              bb emitOnly instr
+
+            case _ =>
+              bb emit instr
+          }
         }
       }
 

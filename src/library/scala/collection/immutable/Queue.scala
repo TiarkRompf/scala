@@ -38,6 +38,7 @@ import scala.annotation.tailrec
  */
 
 @SerialVersionUID(-7622936493364270175L)
+@deprecatedInheritance("The implementation details of immutable queues make inheriting from them unwise.", "2.11.0")
 class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
          extends AbstractSeq[A]
             with LinearSeq[A]
@@ -52,14 +53,15 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
    *
    *  @param  n index of the element to return
    *  @return   the element at position `n` in this queue.
-   *  @throws Predef.NoSuchElementException if the queue is too short.
+   *  @throws java.util.NoSuchElementException if the queue is too short.
    */
   override def apply(n: Int): A = {
-    val len = out.length
-    if (n < len) out.apply(n)
+    val olen = out.length
+    if (n < olen) out.apply(n)
     else {
-      val m = n - len
-      if (m < in.length) in.reverse.apply(m)
+      val m = n - olen
+      val ilen = in.length
+      if (m < ilen) in.apply(ilen - m - 1)
       else throw new NoSuchElementException("index out of range")
     }
   }
@@ -88,6 +90,16 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
    */
   override def length = in.length + out.length
 
+  override def +:[B >: A, That](elem: B)(implicit bf: CanBuildFrom[Queue[A], B, That]): That = bf match {
+    case _: Queue.GenericCanBuildFrom[_] => new Queue(in, elem :: out).asInstanceOf[That]
+    case _                               => super.+:(elem)(bf)
+  }
+
+  override def :+[B >: A, That](elem: B)(implicit bf: CanBuildFrom[Queue[A], B, That]): That = bf match {
+    case _: Queue.GenericCanBuildFrom[_] => enqueue(elem).asInstanceOf[That]
+    case _                               => super.:+(elem)(bf)
+  }
+
   /** Creates a new queue with element added at the end
    *  of the old queue.
    *
@@ -109,7 +121,7 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
   /** Returns a tuple with the first element in the queue,
    *  and a new queue with this element removed.
    *
-   *  @throws Predef.NoSuchElementException
+   *  @throws java.util.NoSuchElementException
    *  @return the first element of the queue.
    */
   def dequeue: (A, Queue[A]) = out match {
@@ -118,10 +130,17 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
     case _                  => throw new NoSuchElementException("dequeue on empty queue")
   }
 
+  /** Optionally retrieves the first element and a queue of the remaining elements.
+   *
+   * @return A tuple of the first element of the queue, and a new queue with this element removed.
+   *         If the queue is empty, `None` is returned.
+   */
+  def dequeueOption: Option[(A, Queue[A])] = if(isEmpty) None else Some(dequeue)
+
   /** Returns the first element in the queue, or throws an error if there
    *  is no element contained in the queue.
    *
-   *  @throws Predef.NoSuchElementException
+   *  @throws java.util.NoSuchElementException
    *  @return the first element.
    */
   def front: A = head

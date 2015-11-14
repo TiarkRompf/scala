@@ -46,6 +46,9 @@ extends ParSet[T]
   // java.lang.Thread.dumpStack
   // println(debugInformation)
 
+  override protected type LT = Any
+  override protected type plocal = local[LT]
+
   def this() = this(null)
 
   override def companion = ParHashSet
@@ -82,12 +85,14 @@ extends ParSet[T]
   }
 
   private def writeObject(s: java.io.ObjectOutputStream) {
-    serializeTo(s)
-  }
+  ESC.TRY{cc=>
+    serializeTo(s)(cc)
+  }}
 
   private def readObject(in: java.io.ObjectInputStream) {
-    init(in, x => ())
-  }
+  ESC.TRY{cc=>
+    init(in, x => ())(cc)
+  }}
 
   import scala.collection.DebugUtils._
   override def debugInformation = buildString {
@@ -326,4 +331,3 @@ private[parallel] object ParHashSetCombiner {
 
   def apply[T] = new ParHashSetCombiner[T](FlatHashTable.defaultLoadFactor) {} //with EnvironmentPassingCombiner[T, ParHashSet[T]]
 }
-

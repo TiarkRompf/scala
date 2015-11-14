@@ -11,6 +11,8 @@ package scalax
 package rules
 package scalasig
 
+import language.postfixOps
+
 import java.io.{PrintStream, ByteArrayOutputStream}
 import java.util.regex.Pattern
 import scala.tools.scalap.scalax.util.StringUtil
@@ -136,7 +138,7 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       print(" {")
       //Print class selftype
       c.selfType match {
-        case Some(t: Type) => print("\n"); print(" this : " + toString(t) + " =>")
+        case Some(t: Type) => print("\n"); print(" this: " + toString(t) + " =>")
         case None =>
       }
       print("\n")
@@ -186,22 +188,12 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
     printWithIndent(level, "}\n")
   }
 
-  def genParamNames(t: {def paramTypes: Seq[Type]}): List[String] = t.paramTypes.toList.map(x => {
-    var str = toString(x)
-    val j = str.indexOf("[")
-    if (j > 0) str = str.substring(0, j)
-    str = StringUtil.trimStart(str, "=> ")
-    val i = str.lastIndexOf(".")
-    val res = if (i > 0) str.substring(i + 1) else str
-    if (res.length > 1) StringUtil.decapitalize(res.substring(0, 1)) else res.toLowerCase
-  })
-
   def printMethodType(t: Type, printResult: Boolean)(cont: => Unit): Unit = {
 
-    def _pmt(mt: Type {def resultType: Type; def paramSymbols: Seq[Symbol]}) = {
+    def _pmt(mt: MethodType) = {
 
       val paramEntries = mt.paramSymbols.map({
-        case ms: MethodSymbol => ms.name + " : " + toString(ms.infoType)(TypeFlags(true))
+        case ms: MethodSymbol => ms.name + ": " + toString(ms.infoType)(TypeFlags(true))
         case _ => "^___^"
       })
       val implicitWord = mt.paramSymbols.headOption match {
@@ -216,21 +208,21 @@ class ScalaSigPrinter(stream: PrintStream, printPrivates: Boolean) {
       mt.resultType match {
         case mt: MethodType => printMethodType(mt, printResult)({})
         case x => if (printResult) {
-          print(" : ");
+          print(": ");
           printType(x)
         }
       }
     }
 
     t match {
-      case NullaryMethodType(resType) => if (printResult) { print(" : "); printType(resType) }
+      case NullaryMethodType(resType) => if (printResult) { print(": "); printType(resType) }
       case mt@MethodType(resType, paramSymbols) => _pmt(mt)
       case pt@PolyType(mt, typeParams) => {
         print(typeParamString(typeParams))
         printMethodType(mt, printResult)({})
       }
       //todo consider another method types
-      case x => print(" : "); printType(x)
+      case x => print(": "); printType(x)
     }
 
     // Print rest of the symbol output

@@ -11,11 +11,11 @@ package collection
 package mutable
 
 /**
- * An immutable AVL Tree implementation used by mutable.TreeSet
+ * An immutable AVL Tree implementation formerly used by mutable.TreeSet
  *
  * @author Lucien Pereira
- * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11")
  */
+@deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11.2")
 private[mutable] sealed trait AVLTree[+A] extends Serializable {
   def balance: Int
 
@@ -27,7 +27,7 @@ private[mutable] sealed trait AVLTree[+A] extends Serializable {
 
   /**
    * Returns a new tree containing the given element.
-   * Thows an IllegalArgumentException if element is already present.
+   * Throws an IllegalArgumentException if element is already present.
    *
    */
   def insert[B >: A](value: B, ordering: Ordering[B]): AVLTree[B] = Node(value, Leaf, Leaf)
@@ -65,7 +65,7 @@ private[mutable] sealed trait AVLTree[+A] extends Serializable {
 }
 
 /**
- * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11")
+ * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11.0")
  */
 private case object Leaf extends AVLTree[Nothing] {
   override val balance: Int = 0
@@ -74,7 +74,7 @@ private case object Leaf extends AVLTree[Nothing] {
 }
 
 /**
- * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11")
+ * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11.0")
  */
 private case class Node[A](data: A, left: AVLTree[A], right: AVLTree[A]) extends AVLTree[A] {
   override val balance: Int = right.depth - left.depth
@@ -95,7 +95,7 @@ private case class Node[A](data: A, left: AVLTree[A], right: AVLTree[A]) extends
 
   /**
    * Returns a new tree containing the given element.
-   * Thows an IllegalArgumentException if element is already present.
+   * Throws an IllegalArgumentException if element is already present.
    *
    */
   override def insert[B >: A](value: B, ordering: Ordering[B]) = {
@@ -211,7 +211,7 @@ private case class Node[A](data: A, left: AVLTree[A], right: AVLTree[A]) extends
 }
 
 /**
- * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11")
+ * @deprecated("AVLTree and its related classes are being removed from the standard library since they're not different enough from RedBlackTree to justify keeping them.", "2.11.0")
  */
 private class AVLIterator[A](root: Node[A]) extends Iterator[A] {
   val stack = mutable.ArrayStack[Node[A]](root)

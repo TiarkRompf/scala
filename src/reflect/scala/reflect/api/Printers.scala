@@ -46,15 +46,15 @@ import java.io.{ PrintWriter, StringWriter }
  * {{{
  *  scala> showRaw(tree)
  *  res1: String = Block(List(
- *    ClassDef(Modifiers(FINAL), newTypeName("C"), List(), Template(
- *      List(Ident(newTypeName("AnyRef"))),
- *      emptyValDef,
+ *    ClassDef(Modifiers(FINAL), TypeName("C"), List(), Template(
+ *      List(Ident(TypeName("AnyRef"))),
+ *      noSelfType,
  *      List(
  *        DefDef(Modifiers(), nme.CONSTRUCTOR, List(), List(List()), TypeTree(),
  *          Block(List(
  *            Apply(Select(Super(This(tpnme.EMPTY), tpnme.EMPTY), nme.CONSTRUCTOR), List())),
  *            Literal(Constant(())))),
- *        DefDef(Modifiers(), newTermName("x"), List(), List(), TypeTree(),
+ *        DefDef(Modifiers(), TermName("x"), List(), List(), TypeTree(),
  *          Literal(Constant(2))))))),
  *    Literal(Constant(())))
  * }}}
@@ -68,25 +68,25 @@ import java.io.{ PrintWriter, StringWriter }
  *  scala> import scala.reflect.runtime.{currentMirror => cm}
  *  import scala.reflect.runtime.{currentMirror=>cm}
  *
- *  scala> showRaw(cm.mkToolBox().typeCheck(tree), printTypes = true)
+ *  scala> showRaw(cm.mkToolBox().typecheck(tree), printTypes = true)
  *  res2: String = Block[1](List(
- *    ClassDef[2](Modifiers(FINAL), newTypeName("C"), List(), Template[3](
- *      List(Ident[4](newTypeName("AnyRef"))),
- *      emptyValDef,
+ *    ClassDef[2](Modifiers(FINAL), TypeName("C"), List(), Template[3](
+ *      List(Ident[4](TypeName("AnyRef"))),
+ *      noSelfType,
  *      List(
  *        DefDef[2](Modifiers(), nme.CONSTRUCTOR, List(), List(List()), TypeTree[3](),
  *          Block[1](List(
- *            Apply[4](Select[5](Super[6](This[3](newTypeName("C")), tpnme.EMPTY), ...))),
+ *            Apply[4](Select[5](Super[6](This[3](TypeName("C")), tpnme.EMPTY), ...))),
  *            Literal[1](Constant(())))),
- *        DefDef[2](Modifiers(), newTermName("x"), List(), List(), TypeTree[7](),
+ *        DefDef[2](Modifiers(), TermName("x"), List(), List(), TypeTree[7](),
  *          Literal[8](Constant(2))))))),
  *    Literal[1](Constant(())))
  *  [1] TypeRef(ThisType(scala), scala.Unit, List())
  *  [2] NoType
- *  [3] TypeRef(NoPrefix, newTypeName("C"), List())
+ *  [3] TypeRef(NoPrefix, TypeName("C"), List())
  *  [4] TypeRef(ThisType(java.lang), java.lang.Object, List())
  *  [5] MethodType(List(), TypeRef(ThisType(java.lang), java.lang.Object, List()))
- *  [6] SuperType(ThisType(newTypeName("C")), TypeRef(... java.lang.Object ...))
+ *  [6] SuperType(ThisType(TypeName("C")), TypeRef(... java.lang.Object ...))
  *  [7] TypeRef(ThisType(scala), scala.Int, List())
  *  [8] ConstantType(Constant(2))
  *  }}}
@@ -112,10 +112,10 @@ import java.io.{ PrintWriter, StringWriter }
  *  // showRaw has already been discussed above
  *  scala> showRaw(tpe)
  *  res1: String = RefinedType(
- *    List(TypeRef(ThisType(scala), newTypeName("AnyRef"), List())),
+ *    List(TypeRef(ThisType(scala), TypeName("AnyRef"), List())),
  *    Scope(
- *      newTermName("x"),
- *      newTermName("y")))
+ *      TermName("x"),
+ *      TermName("y")))
  * }}}
  *
  * `printIds` and/or `printKinds` can additionally be supplied as arguments in a call to
@@ -124,10 +124,10 @@ import java.io.{ PrintWriter, StringWriter }
  * {{{
  *  scala> showRaw(tpe, printIds = true, printKinds = true)
  *  res2: String = RefinedType(
- *    List(TypeRef(ThisType(scala#2043#PK), newTypeName("AnyRef")#691#TPE, List())),
+ *    List(TypeRef(ThisType(scala#2043#PK), TypeName("AnyRef")#691#TPE, List())),
  *    Scope(
- *      newTermName("x")#2540#METH,
- *      newTermName("y")#2541#GET))
+ *      TermName("x")#2540#METH,
+ *      TermName("y")#2541#GET))
  * }}}
  *
  * For more details about `Printer`s and other aspects of Scala reflection, see the
@@ -142,6 +142,7 @@ trait Printers { self: Universe =>
     def print(args: Any*)
     protected var printTypes = false
     protected var printIds = false
+    protected var printOwners = false
     protected var printKinds = false
     protected var printMirrors = false
     protected var printPositions = false
@@ -149,6 +150,8 @@ trait Printers { self: Universe =>
     def withoutTypes: this.type = { printTypes = false; this }
     def withIds: this.type = { printIds = true; this }
     def withoutIds: this.type = { printIds = false; this }
+    def withOwners: this.type = { printOwners = true; this }
+    def withoutOwners: this.type = { printOwners = false; this }
     def withKinds: this.type = { printKinds = true; this }
     def withoutKinds: this.type = { printKinds = false; this }
     def withMirrors: this.type = { printMirrors = true; this }
@@ -169,12 +172,13 @@ trait Printers { self: Universe =>
   }
 
   /** @group Printers */
-  protected def render(what: Any, mkPrinter: PrintWriter => TreePrinter, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String = {
+  protected def render(what: Any, mkPrinter: PrintWriter => TreePrinter, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printOwners: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String = {
     val buffer = new StringWriter()
     val writer = new PrintWriter(buffer)
     val printer = mkPrinter(writer)
     printTypes.value.map(printTypes => if (printTypes) printer.withTypes else printer.withoutTypes)
     printIds.value.map(printIds => if (printIds) printer.withIds else printer.withoutIds)
+    printOwners.value.map(printOwners => if (printOwners) printer.withOwners else printer.withoutOwners)
     printKinds.value.map(printKinds => if (printKinds) printer.withKinds else printer.withoutKinds)
     printMirrors.value.map(printMirrors => if (printMirrors) printer.withMirrors else printer.withoutMirrors)
     printPositions.value.map(printPositions => if (printPositions) printer.withPositions else printer.withoutPositions)
@@ -193,21 +197,42 @@ trait Printers { self: Universe =>
    *
    *  @group Printers
    */
-  def show(any: Any, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String =
-    render(any, newTreePrinter(_), printTypes, printIds, printKinds, printMirrors, printPositions)
+  def show(any: Any, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printOwners: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String =
+    render(any, newTreePrinter(_), printTypes, printIds, printOwners, printKinds, printMirrors, printPositions)
 
   /** Hook to define what `show(...)` means.
    * @group Printers
    */
   protected def newTreePrinter(out: PrintWriter): TreePrinter
 
+  /**
+   * Renders the code of the passed tree, so that:
+   *  1) it can be later compiled by scalac retaining the same meaning,
+   *  2) it looks pretty.
+   *  #1 is available for unattributed trees and attributed trees
+   *  #2 is more or less okay indentation-wise, but at the moment there's a lot of desugaring
+   *  left in place, and that's what we plan to improve in the future.
+   *  printTypes, printIds, printPositions options have the same meaning as for TreePrinter
+   *  printRootPkg option is available only for attributed trees.
+   *
+   *  @group Printers
+   */
+  def showCode(tree: Tree, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printOwners: BooleanFlag = None, printPositions: BooleanFlag = None, printRootPkg: Boolean = false) =
+    render(tree, newCodePrinter(_, tree, printRootPkg), printTypes, printIds, printOwners, printKinds = None, printMirrors = None, printPositions)
+
+  /**
+   * Hook to define what `showCode(...)` means.
+   * @group Printers
+   */
+  protected def newCodePrinter(out: PrintWriter, tree: Tree, printRootPkg: Boolean): TreePrinter
+
   /** Renders internal structure of a reflection artifact as the
    *  visualization of a Scala syntax tree.
    *
    *  @group Printers
    */
-  def showRaw(any: Any, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String =
-    render(any, newRawTreePrinter(_), printTypes, printIds, printKinds, printMirrors, printPositions)
+  def showRaw(any: Any, printTypes: BooleanFlag = None, printIds: BooleanFlag = None, printOwners: BooleanFlag = None, printKinds: BooleanFlag = None, printMirrors: BooleanFlag = None, printPositions: BooleanFlag = None): String =
+    render(any, newRawTreePrinter(_), printTypes, printIds, printOwners, printKinds, printMirrors, printPositions)
 
   /** Hook to define what `showRaw(...)` means.
    * @group Printers
@@ -229,8 +254,23 @@ trait Printers { self: Universe =>
    */
   def show(flags: FlagSet): String
 
+  /** Renders a prettified representation of a position.
+   * @group Printers
+   */
+  def show(position: Position): String
+
   /** Renders internal structure of a flag set.
    * @group Printers
    */
   def showRaw(flags: FlagSet): String = flags.toString
+
+  /** Renders internal structure of a position.
+   * @group Printers
+   */
+  def showRaw(position: Position): String = position.toString
+
+  /** Renders a string that represents a declaration of this symbol written in Scala.
+   * @group Printers
+   */
+  def showDecl(sym: Symbol): String
 }

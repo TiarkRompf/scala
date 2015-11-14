@@ -17,11 +17,11 @@ import scala.language.implicitConversions
  *  To search for the `map` method (which is a term) declared in the `List` class, one can do:
  *
  * {{{
- *   scala> typeOf[List[_]].member(newTermName("map"))
+ *   scala> typeOf[List[_]].member(TermName("map"))
  *   res0: reflect.runtime.universe.Symbol = method map
  * }}}
  *
- *  To search for a type member, one can follow the same procedure, using `newTypeName` instead.
+ *  To search for a type member, one can follow the same procedure, using `TypeName` instead.
  *
  *  For more information about creating and using `Name`s, see the [[http://docs.scala-lang.org/overviews/reflection/annotations-names-scopes.html Reflection Guide: Annotations, Names, Scopes, and More]]
  *
@@ -30,40 +30,52 @@ import scala.language.implicitConversions
  */
 trait Names {
   /** An implicit conversion from String to TermName.
-   *  Enables an alternative notation `"map": TermName` as opposed to `newTermName("map")`.
-   *  @group Names
+   * Enables an alternative notation `"map": TermName` as opposed to `TermName("map")`.
+   * @group Names
    */
-  implicit def stringToTermName(s: String): TermName = newTermName(s)
+  @deprecated("Use explicit `TermName(s)` instead", "2.11.0")
+  implicit def stringToTermName(s: String): TermName = TermName(s)
 
   /** An implicit conversion from String to TypeName.
-   *  Enables an alternative notation `"List": TypeName` as opposed to `newTypeName("List")`.
-   *  @group Names
+   * Enables an alternative notation `"List": TypeName` as opposed to `TypeName("List")`.
+   * @group Names
    */
-  implicit def stringToTypeName(s: String): TypeName = newTypeName(s)
+  @deprecated("Use explicit `TypeName(s)` instead", "2.11.0")
+  implicit def stringToTypeName(s: String): TypeName = TypeName(s)
 
   /** The abstract type of names.
    *  @group Names
    */
-  type Name >: Null <: NameApi
+  type Name >: Null <: AnyRef with NameApi
 
   /** The abstract type of names representing terms.
    *  @group Names
    */
-  type TypeName >: Null <: Name
+  type TypeName >: Null <: TypeNameApi with Name
+
+  /** Has no special methods. Is here to provides erased identity for `TypeName`.
+   *  @group API
+   */
+  trait TypeNameApi
 
   /** The abstract type of names representing types.
    *  @group Names
    */
-  type TermName >: Null <: Name
+  type TermName >: Null <: TermNameApi with Name
+
+  /** Has no special methods. Is here to provides erased identity for `TermName`.
+   *  @group API
+   */
+  trait TermNameApi
 
   /** The API of Name instances.
    *  @group API
    */
   abstract class NameApi {
-    /** Checks wether the name is a term name */
+    /** Checks whether the name is a term name */
     def isTermName: Boolean
 
-    /** Checks wether the name is a type name */
+    /** Checks whether the name is a type name */
     def isTypeName: Boolean
 
     /** Returns a term name that wraps the same string as `this` */
@@ -75,11 +87,13 @@ trait Names {
     /** Replaces all occurrences of \$op_names in this name by corresponding operator symbols.
      *  Example: `foo_\$plus\$eq` becomes `foo_+=`
      */
+    @deprecated("Use `decodedName.toString` instead", "2.11.0")
     def decoded: String
 
     /** Replaces all occurrences of operator symbols in this name by corresponding \$op_names.
      *  Example: `foo_+=` becomes `foo_\$plus\$eq`.
      */
+    @deprecated("Use `encodedName.toString` instead", "2.11.0")
     def encoded: String
 
     /** The decoded name, still represented as a name.

@@ -654,9 +654,11 @@ extends scala.collection.concurrent.Map[K, V]
 
   /* internal methods */
 
+  // ESC: method has Java checked exception
   private def writeObject(out: java.io.ObjectOutputStream) {
-    out.writeObject(hashf)
-    out.writeObject(ef)
+  ESC.NO{
+    out.writeObject(hashingobj)
+    out.writeObject(equalityobj)
 
     val it = iterator
     while (it.hasNext) {
@@ -665,9 +667,10 @@ extends scala.collection.concurrent.Map[K, V]
       out.writeObject(v)
     }
     out.writeObject(TrieMapSerializationEnd)
-  }
+  }}
 
   private def readObject(in: java.io.ObjectInputStream) {
+  ESC.NO{
     root = INode.newRootNode
     rootupdater = AtomicReferenceFieldUpdater.newUpdater(classOf[TrieMap[K, V]], classOf[AnyRef], "root")
 
@@ -683,7 +686,7 @@ extends scala.collection.concurrent.Map[K, V]
         update(k, v)
       }
     } while (obj != TrieMapSerializationEnd)
-  }
+  }}
 
   def CAS_ROOT(ov: AnyRef, nv: AnyRef) = rootupdater.compareAndSet(this, ov, nv)
 
@@ -871,6 +874,44 @@ extends scala.collection.concurrent.Map[K, V]
   def putIfAbsent(k: K, v: V): Option[V] = {
     val hc = computeHash(k)
     insertifhc(k, hc, v, INode.KEY_ABSENT)
+  }
+
+  // TODO once computeIfAbsent is added to concurrent.Map,
+  // move the comment there and tweak the 'at most once' part
+  /** If the specified key is not already in the map, computes its value using
+   *  the given thunk `op` and enters it into the map.
+   *
+   *  Since concurrent maps cannot contain `null` for keys or values,
+   *  a `NullPointerException` is thrown if the thunk `op`
+   *  returns `null`.
+   *
+   *  If the specified mapping function throws an exception,
+   *  that exception is rethrown.
+   *  
+   *  Note: This method will invoke op at most once.
+   *  However, `op` may be invoked without the result being added to the map if
+   *  a concurrent process is also trying to add a value corresponding to the
+   *  same key `k`.
+   *
+   *  @param k      the key to modify
+   *  @param op     the expression that computes the value
+   *  @return       the newly added value
+   */
+  override def getOrElseUpdate(k: K, op: =>V): V = {
+    val oldv = lookup(k)
+    if (oldv != null) oldv.asInstanceOf[V]
+    else {
+      val v = op
+      if (v == null) {
+        throw new NullPointerException("Concurrent TrieMap values cannot be null.")
+      } else {
+        val hc = computeHash(k)
+        insertifhc(k, hc, v, INode.KEY_ABSENT) match {
+          case Some(oldv) => oldv
+          case None => v
+        }
+      }
+    }
   }
 
   def remove(k: K, v: V): Boolean = {

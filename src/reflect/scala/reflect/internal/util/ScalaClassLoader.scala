@@ -44,7 +44,7 @@ trait ScalaClassLoader extends JClassLoader {
 
   /** Create an instance of a class with this classloader */
   def create(path: String): AnyRef =
-    tryToInitializeClass[AnyRef](path) map (_.newInstance()) orNull
+    tryToInitializeClass[AnyRef](path).map(_.newInstance()).orNull
 
   /** The actual bytes for a class file, or an empty array if it can't be found. */
   def classBytes(className: String): Array[Byte] = classAsStream(className) match {
@@ -53,8 +53,10 @@ trait ScalaClassLoader extends JClassLoader {
   }
 
   /** An InputStream representing the given class name, or null if not found. */
-  def classAsStream(className: String) =
-    getResourceAsStream(className.replaceAll("""\.""", "/") + ".class")
+  def classAsStream(className: String) = getResourceAsStream {
+    if (className endsWith ".class") className
+    else s"${className.replace('.', '/')}.class"  // classNameToPath
+  }
 
   /** Run the main method of a class to be loaded by this classloader */
   def run(objectName: String, arguments: Seq[String]) {
@@ -116,7 +118,7 @@ object ScalaClassLoader {
 
   /** True if supplied class exists in supplied path */
   def classExists(urls: Seq[URL], name: String): Boolean =
-    fromURLs(urls) tryToLoadClass name isDefined
+    (fromURLs(urls) tryToLoadClass name).isDefined
 
   /** Finding what jar a clazz or instance came from */
   def originOfClass(x: Class[_]): Option[URL] =

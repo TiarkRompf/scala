@@ -155,7 +155,7 @@ class Power[ReplValsImpl <: ReplVals : ru.TypeTag: ClassTag](val intp: IMain, re
   }
   object InternalInfo extends LowPriorityInternalInfo { }
 
-  /** Now dealing with the problem of acidentally calling a method on Type
+  /** Now dealing with the problem of accidentally calling a method on Type
    *  when you're holding a Symbol and seeing the Symbol converted to the
    *  type of Symbol rather than the type of the thing represented by the
    *  symbol, by only implicitly installing one method, "?", and the rest
@@ -316,7 +316,7 @@ class Power[ReplValsImpl <: ReplVals : ru.TypeTag: ClassTag](val intp: IMain, re
   lazy val phased: Phased       = new { val global: intp.global.type = intp.global } with Phased { }
 
   def unit(code: String)    = newCompilationUnit(code)
-  def trees(code: String)   = parse(code) getOrElse Nil
+  def trees(code: String)   = parse(code) match { case parse.Success(trees) => trees; case _ => Nil }
 
   override def toString = s"""
     |** Power mode status **

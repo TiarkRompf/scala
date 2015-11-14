@@ -46,6 +46,9 @@ class LinkedHashSet[A] extends AbstractSet[A]
                           with HashTable[A, LinkedHashSet.Entry[A]]
                           with Serializable
 {
+  override protected type LT = Any
+  override protected type plocal = local[LT]
+
   override def companion: GenericCompanion[LinkedHashSet] = LinkedHashSet
 
   type Entry = LinkedHashSet.Entry[A]
@@ -57,7 +60,10 @@ class LinkedHashSet[A] extends AbstractSet[A]
 
   def contains(elem: A): Boolean = findEntry(elem) ne null
 
+  @deprecatedOverriding("+= should not be overridden so it stays consistent with add.", "2.11.0")
   def += (elem: A): this.type = { add(elem); this }
+
+  @deprecatedOverriding("-= should not be overridden so it stays consistent with remove.", "2.11.0")
   def -= (elem: A): this.type = { remove(elem); this }
 
   override def add(elem: A): Boolean = findOrAddEntry(elem, null) eq null
@@ -81,7 +87,7 @@ class LinkedHashSet[A] extends AbstractSet[A]
       if (hasNext) { val res = cur.key; cur = cur.later; res }
       else Iterator.empty.next()
   }
-  
+
   override def foreach[U](f: A => U) {
     var cur = firstEntry
     while (cur ne null) {
@@ -109,17 +115,20 @@ class LinkedHashSet[A] extends AbstractSet[A]
   override def clear() {
     clearTable()
     firstEntry = null
+    lastEntry = null
   }
 
   private def writeObject(out: java.io.ObjectOutputStream) {
-    serializeTo(out, { e => out.writeObject(e.key) })
-  }
+  ESC.TRY{cc=>
+    serializeTo(out, { e => ESC.THROW(out.writeObject(e.key))(cc) })(cc)
+  }}
 
   private def readObject(in: java.io.ObjectInputStream) {
+  ESC.TRY{cc=>
     firstEntry = null
     lastEntry = null
-    init(in, createNewEntry(in.readObject().asInstanceOf[A], null))
-  }
+    init(in, createNewEntry(ESC.THROW(in.readObject().asInstanceOf[A])(cc), null))(cc)
+  }}
 }
 
 /** $factoryInfo
@@ -138,4 +147,3 @@ object LinkedHashSet extends MutableSetFactory[LinkedHashSet] {
     var later: Entry[A] = null
   }
 }
-

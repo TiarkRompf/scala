@@ -126,6 +126,7 @@ import PagedSeq._
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
+@deprecatedInheritance("The implementation details of paged sequences make inheriting from them unwise.", "2.11.0")
 class PagedSeq[T: ClassTag] protected(
   more: (Array[T], Int, Int) => Int,
   first1: Page[T],
@@ -157,7 +158,7 @@ extends scala.collection.AbstractSeq[T]
    *  @note Calling this method will force the entire sequence to be read.
    */
   def length: Int = {
-    while (!latest.isLast) addMore()
+    while (!latest.isLast && latest.end < end) addMore()
     (latest.end min end) - start
   }
 
@@ -174,7 +175,8 @@ extends scala.collection.AbstractSeq[T]
    */
   override def isDefinedAt(index: Int) =
     index >= 0 && index < end - start && {
-      val p = page(index + start); index + start < p.end
+      val absidx = index + start
+      absidx >= 0 && absidx < page(absidx).end
     }
 
    /** The subsequence from index `start` up to `end -1` if `end`
@@ -187,7 +189,13 @@ extends scala.collection.AbstractSeq[T]
     val s = start + _start
     val e = if (_end == UndeterminedEnd) _end else start + _end
     var f = first1
-    while (f.end <= s && !f.isLast) f = f.next
+    while (f.end <= s && !f.isLast) {
+      if (f.next eq null) f.addMore(more)
+      f = f.next
+    }
+    // Warning -- not refining `more` means that slices can freely request and obtain
+    // data outside of their slice.  This is part of the design of PagedSeq
+    // (to read pages!) but can be surprising.
     new PagedSeq(more, f, s, e)
   }
 

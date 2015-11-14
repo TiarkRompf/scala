@@ -18,6 +18,7 @@ package collection
  *  @version 2.8
  *  @since   2.8
  */
+@deprecated("Proxying is deprecated due to lack of use and compiler-level support.", "2.11.0")
 trait MapProxyLike[A, +B, +This <: MapLike[A, B, This] with Map[A, B]]
       extends MapLike[A, B, This]
       with IterableProxyLike[(A, B), This]
@@ -42,7 +43,7 @@ trait MapProxyLike[A, +B, +This <: MapLike[A, B, This] with Map[A, B]]
   override def updated [B1 >: B](key: A, value: B1): Map[A, B1] = self.updated(key, value)
   override def + [B1 >: B] (kv1: (A, B1), kv2: (A, B1), kvs: (A, B1) *): Map[A, B1] = self.+(kv1, kv2, kvs: _*)
   override def ++[B1 >: B](xs: GenTraversableOnce[(A, B1)]): Map[A, B1] =  self.++(xs)
-  override def filterNot(p: ((A, B)) => Boolean) = self filterNot p
+  override def filterNot(@plocal p: ((A, B)) => Boolean) = self filterNot p
 
   override def addString(b: StringBuilder, start: String, sep: String, end: String): StringBuilder =
     self.addString(b, start, sep, end)

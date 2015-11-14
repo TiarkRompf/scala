@@ -21,19 +21,24 @@ trait ScannersCommon {
   val global : Global
   import global._
 
+  /** Offset into source character array */
+  type Offset = Int
+
+  type Token = Int
+
   trait CommonTokenData {
-    def token: Int
+    def token: Token
     def name: TermName
   }
 
   trait ScannerCommon extends CommonTokenData {
     // things to fill in, in addition to buf, decodeUni which come from CharArrayReader
-    def error  (off: Int, msg: String): Unit
-    def incompleteInputError(off: Int, msg: String): Unit
-    def deprecationWarning(off: Int, msg: String): Unit
+    def error(off: Offset, msg: String): Unit
+    def incompleteInputError(off: Offset, msg: String): Unit
+    def deprecationWarning(off: Offset, msg: String): Unit
   }
 
-  def createKeywordArray(keywords: Seq[(Name, Int)], defaultToken: Int): (Int, Array[Int]) = {
+  def createKeywordArray(keywords: Seq[(Name, Token)], defaultToken: Token): (Token, Array[Token]) = {
     val names = keywords sortBy (_._1.start) map { case (k, v) => (k.start, v) }
     val low   = names.head._1
     val high  = names.last._1
@@ -48,13 +53,10 @@ trait Scanners extends ScannersCommon {
   val global : Global
   import global._
 
-  /** Offset into source character array */
-  type Offset = Int
-
   trait TokenData extends CommonTokenData {
 
     /** the next token */
-    var token: Int = EMPTY
+    var token: Token = EMPTY
 
     /** the offset of the first character of the current token */
     var offset: Offset = 0
@@ -111,7 +113,7 @@ trait Scanners extends ScannersCommon {
       case SU | CR | LF =>
       case _            => nextChar() ; skipLineComment()
     }
-    private def maybeOpen() {
+    private def maybeOpen(): Unit = {
       putCommentChar()
       if (ch == '*') {
         putCommentChar()
@@ -135,7 +137,7 @@ trait Scanners extends ScannersCommon {
     def skipDocComment(): Unit = skipNestedComments()
     def skipBlockComment(): Unit = skipNestedComments()
 
-    private def skipToCommentEnd(isLineComment: Boolean) {
+    private def skipToCommentEnd(isLineComment: Boolean): Unit = {
       nextChar()
       if (isLineComment) skipLineComment()
       else {
@@ -169,7 +171,7 @@ trait Scanners extends ScannersCommon {
 
     def isAtEnd = charOffset >= buf.length
 
-    def resume(lastCode: Int) = {
+    def resume(lastCode: Token) = {
       token = lastCode
       if (next.token != EMPTY && !reporter.hasErrors)
         syntaxError("unexpected end of input: possible missing '}' in XML block")
@@ -183,7 +185,7 @@ trait Scanners extends ScannersCommon {
 
     /** append Unicode character to "cbuf" buffer
      */
-    protected def putChar(c: Char) {
+    protected def putChar(c: Char): Unit = {
 //      assert(cbuf.size < 10000, cbuf)
       cbuf.append(c)
     }
@@ -194,7 +196,7 @@ trait Scanners extends ScannersCommon {
     protected def emitIdentifierDeprecationWarnings = true
 
     /** Clear buffer and set name and token */
-    private def finishNamed(idtoken: Int = IDENTIFIER) {
+    private def finishNamed(idtoken: Token = IDENTIFIER): Unit = {
       name = newTermName(cbuf.toString)
       cbuf.clear()
       token = idtoken
@@ -202,14 +204,18 @@ trait Scanners extends ScannersCommon {
         val idx = name.start - kwOffset
         if (idx >= 0 && idx < kwArray.length) {
           token = kwArray(idx)
-          if (token == IDENTIFIER && allowIdent != name && emitIdentifierDeprecationWarnings)
-            deprecationWarning(name+" is now a reserved word; usage as an identifier is deprecated")
+          if (token == IDENTIFIER && allowIdent != name) {
+            if (name == nme.MACROkw)
+              syntaxError(s"$name is now a reserved word; usage as an identifier is disallowed")
+            else if (emitIdentifierDeprecationWarnings)
+              deprecationWarning(s"$name is now a reserved word; usage as an identifier is deprecated")
+          }
         }
       }
     }
 
     /** Clear buffer and set string */
-    private def setStrVal() {
+    private def setStrVal(): Unit = {
       strVal = cbuf.toString
       cbuf.clear()
     }
@@ -225,7 +231,7 @@ trait Scanners extends ScannersCommon {
      *            (the STRINGLIT appears twice in succession on the stack iff the
      *             expression is a multiline string literal).
      */
-    var sepRegions: List[Int] = List()
+    var sepRegions: List[Token] = List()
 
 // Get next token ------------------------------------------------------------
 
@@ -264,7 +270,7 @@ trait Scanners extends ScannersCommon {
 
     /** Produce next token, filling TokenData fields of Scanner.
      */
-    def nextToken() {
+    def nextToken(): Unit = {
       val lastToken = token
       // Adapt sepRegions according to last token
       (lastToken: @switch) match {
@@ -335,7 +341,7 @@ trait Scanners extends ScannersCommon {
         prev copyFrom this
         val nextLastOffset = charOffset - 1
         fetchToken()
-        def resetOffset() {
+        def resetOffset(): Unit = {
           offset = prev.offset
           lastOffset = prev.lastOffset
         }
@@ -383,7 +389,7 @@ trait Scanners extends ScannersCommon {
 //              println("blank line found at "+lastOffset+":"+(lastOffset to idx).map(buf(_)).toList)
               return true
             }
-	    if (idx == end) return false
+            if (idx == end) return false
           } while (ch <= ' ')
         }
         idx += 1; ch = buf(idx)
@@ -393,7 +399,7 @@ trait Scanners extends ScannersCommon {
 
     /** read next token, filling TokenData fields of Scanner.
      */
-    protected final def fetchToken() {
+    protected final def fetchToken(): Unit = {
       offset = charOffset - 1
       (ch: @switch) match {
 
@@ -447,27 +453,15 @@ trait Scanners extends ScannersCommon {
             getOperatorRest()
           }
         case '0' =>
-          def fetchZero() = {
-            putChar(ch)
+          def fetchLeadingZero(): Unit = {
             nextChar()
-            if (ch == 'x' || ch == 'X') {
-              nextChar()
-              base = 16
-            } else {
-              /*
-               * What should leading 0 be in the future? It is potentially dangerous
-               *  to let it be base-10 because of history.  Should it be an error? Is
-               *  there a realistic situation where one would need it?
-               */
-              if (isDigit(ch)) {
-                if (settings.future) syntaxError("Non-zero numbers may not have a leading zero.")
-                else deprecationWarning("Treating numbers with a leading zero as octal is deprecated.")
-              }
-              base = 8
+            ch match {
+              case 'x' | 'X' => base = 16 ; nextChar()
+              case _         => base = 8    // single decimal zero, perhaps
             }
-            getNumber()
           }
-          fetchZero()
+          fetchLeadingZero()
+          getNumber()
         case '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' =>
           base = 10
           getNumber()
@@ -478,14 +472,17 @@ trait Scanners extends ScannersCommon {
             if (token == INTERPOLATIONID) {
               nextRawChar()
               if (ch == '\"') {
-                nextRawChar()
-                if (ch == '\"') {
+                val lookahead = lookaheadReader
+                lookahead.nextChar()
+                if (lookahead.ch == '\"') {
+                  nextRawChar()                        // now eat it
                   offset += 3
                   nextRawChar()
                   getStringPart(multiLine = true)
                   sepRegions = STRINGPART :: sepRegions // indicate string part
                   sepRegions = STRINGLIT :: sepRegions // once more to indicate multi line string part
                 } else {
+                  nextChar()
                   token = STRINGLIT
                   strVal = ""
                 }
@@ -583,7 +580,7 @@ trait Scanners extends ScannersCommon {
     }
 
     /** Can token start a statement? */
-    def inFirstOfStat(token: Int) = token match {
+    def inFirstOfStat(token: Token) = token match {
       case EOF | CATCH | ELSE | EXTENDS | FINALLY | FORSOME | MATCH | WITH | YIELD |
            COMMA | SEMI | NEWLINE | NEWLINES | DOT | COLON | EQUALS | ARROW | LARROW |
            SUBTYPE | VIEWBOUND | SUPERTYPE | HASH | RPAREN | RBRACKET | RBRACE | LBRACKET =>
@@ -593,7 +590,7 @@ trait Scanners extends ScannersCommon {
     }
 
     /** Can token end a statement? */
-    def inLastOfStat(token: Int) = token match {
+    def inLastOfStat(token: Token) = token match {
       case CHARLIT | INTLIT | LONGLIT | FLOATLIT | DOUBLELIT | STRINGLIT | SYMBOLLIT |
            IDENTIFIER | BACKQUOTED_IDENT | THIS | NULL | TRUE | FALSE | RETURN | USCORE |
            TYPE | XMLSTART | RPAREN | RBRACKET | RBRACE =>
@@ -604,16 +601,13 @@ trait Scanners extends ScannersCommon {
 
 // Identifiers ---------------------------------------------------------------
 
-    private def getBackquotedIdent() {
+    private def getBackquotedIdent(): Unit = {
       nextChar()
       getLitChars('`')
       if (ch == '`') {
         nextChar()
         finishNamed(BACKQUOTED_IDENT)
-        if (name.length == 0)
-          syntaxError("empty quoted identifier")
-        else if (name == nme.WILDCARD)
-          syntaxError("wildcard invalid as backquoted identifier")
+        if (name.length == 0) syntaxError("empty quoted identifier")
       }
       else syntaxError("unclosed quoted identifier")
     }
@@ -667,7 +661,7 @@ trait Scanners extends ScannersCommon {
         else finishNamed()
     }
 
-    private def getIdentOrOperatorRest() {
+    private def getIdentOrOperatorRest(): Unit = {
       if (isIdentifierPart(ch))
         getIdentRest()
       else ch match {
@@ -691,8 +685,10 @@ trait Scanners extends ScannersCommon {
         setStrVal()
         nextChar()
         token = STRINGLIT
-      } else syntaxError("unclosed string literal")
+      } else unclosedStringLit()
     }
+
+    private def unclosedStringLit(): Unit = syntaxError("unclosed string literal")
 
     private def getRawStringLit(): Unit = {
       if (ch == '\"') {
@@ -741,6 +737,10 @@ trait Scanners extends ScannersCommon {
           finishStringPart()
           nextRawChar()
           next.token = LBRACE
+        } else if (ch == '_') {
+          finishStringPart()
+          nextRawChar()
+          next.token = USCORE
         } else if (Character.isUnicodeIdentifierStart(ch)) {
           finishStringPart()
           do {
@@ -763,7 +763,7 @@ trait Scanners extends ScannersCommon {
           if (multiLine)
             incompleteInputError("unclosed multi-line string literal")
           else
-            syntaxError("unclosed string literal")
+            unclosedStringLit()
         }
         else {
           putChar(ch)
@@ -856,7 +856,7 @@ trait Scanners extends ScannersCommon {
     /** read fractional part and exponent of floating point number
      *  if one is present.
      */
-    protected def getFraction() {
+    protected def getFraction(): Unit = {
       token = DOUBLELIT
       while ('0' <= ch && ch <= '9') {
         putChar(ch)
@@ -899,62 +899,61 @@ trait Scanners extends ScannersCommon {
      */
     def charVal: Char = if (strVal.length > 0) strVal.charAt(0) else 0
 
-    /** Convert current strVal, base to long value
+    /** Convert current strVal, base to long value.
      *  This is tricky because of max negative value.
+     *
+     *  Conversions in base 10 and 16 are supported. As a permanent migration
+     *  path, attempts to write base 8 literals except `0` emit a verbose error.
      */
     def intVal(negated: Boolean): Long = {
-      if (token == CHARLIT && !negated) {
-        charVal.toLong
-      } else {
-        var value: Long = 0
-        val divider = if (base == 10) 1 else 2
-        val limit: Long =
-          if (token == LONGLIT) Long.MaxValue else Int.MaxValue
-        var i = 0
-        val len = strVal.length
-        while (i < len) {
-          val d = digit2int(strVal charAt i, base)
-          if (d < 0) {
-            syntaxError("malformed integer number")
-            return 0
-          }
-          if (value < 0 ||
-              limit / (base / divider) < value ||
-              limit - (d / divider) < value * (base / divider) &&
-              !(negated && limit == value * base - 1 + d)) {
-                syntaxError("integer number too large")
-                return 0
-              }
-          value = value * base + d
-          i += 1
-        }
-        if (negated) -value else value
+      def malformed: Long = {
+        if (base == 8) syntaxError("Decimal integer literals may not have a leading zero. (Octal syntax is obsolete.)")
+        else syntaxError("malformed integer number")
+        0
       }
+      def tooBig: Long = {
+        syntaxError("integer number too large")
+        0
+      }
+      def intConvert: Long = {
+        val len = strVal.length
+        if (len == 0) {
+          if (base != 8) syntaxError("missing integer number")  // e.g., 0x;
+          0
+        } else {
+          val divider     = if (base == 10) 1 else 2
+          val limit: Long = if (token == LONGLIT) Long.MaxValue else Int.MaxValue
+          @tailrec def convert(value: Long, i: Int): Long =
+            if (i >= len) value
+            else {
+              val d = digit2int(strVal charAt i, base)
+              if (d < 0)
+                malformed
+              else if (value < 0 ||
+                  limit / (base / divider) < value ||
+                  limit - (d / divider) < value * (base / divider) &&
+                  !(negated && limit == value * base - 1 + d))
+                tooBig
+              else
+                convert(value * base + d, i + 1)
+            }
+          val result = convert(0, 0)
+          if (base == 8) malformed else if (negated) -result else result
+        }
+      }
+      if (token == CHARLIT && !negated) charVal.toLong else intConvert
     }
 
     def intVal: Long = intVal(negated = false)
 
     /** Convert current strVal, base to double value
-    */
+     */
     def floatVal(negated: Boolean): Double = {
-
-      val limit: Double =
-        if (token == DOUBLELIT) Double.MaxValue else Float.MaxValue
+      val limit: Double = if (token == DOUBLELIT) Double.MaxValue else Float.MaxValue
       try {
         val value: Double = java.lang.Double.valueOf(strVal).doubleValue()
-        def isDeprecatedForm = {
-          val idx = strVal indexOf '.'
-          (idx == strVal.length - 1) || (
-               (idx >= 0)
-            && (idx + 1 < strVal.length)
-            && (!Character.isDigit(strVal charAt (idx + 1)))
-          )
-        }
         if (value > limit)
           syntaxError("floating point number too large")
-        if (isDeprecatedForm)
-          syntaxError("floating point number is missing digit after dot")
-
         if (negated) -value else value
       } catch {
         case _: NumberFormatException =>
@@ -965,85 +964,50 @@ trait Scanners extends ScannersCommon {
 
     def floatVal: Double = floatVal(negated = false)
 
-    def checkNoLetter() {
+    def checkNoLetter(): Unit = {
       if (isIdentifierPart(ch) && ch >= ' ')
         syntaxError("Invalid literal number")
     }
 
-    /** Read a number into strVal and set base
-    */
-    protected def getNumber() {
-      val base1 = if (base < 10) 10 else base
-      // read 8,9's even if format is octal, produce a malformed number error afterwards.
-      while (digit2int(ch, base1) >= 0) {
-        putChar(ch)
-        nextChar()
-      }
-      token = INTLIT
-
-      /* When we know for certain it's a number after using a touch of lookahead */
-      def restOfNumber() = {
-        putChar(ch)
-        nextChar()
+    /** Read a number into strVal.
+     *
+     *  The `base` can be 8, 10 or 16, where base 8 flags a leading zero.
+     *  For ints, base 8 is legal only for the case of exactly one zero.
+     */
+    protected def getNumber(): Unit = {
+      // consume digits of a radix
+      def consumeDigits(radix: Int): Unit =
+        while (digit2int(ch, radix) >= 0) {
+          putChar(ch)
+          nextChar()
+        }
+      // adding decimal point is always OK because `Double valueOf "0."` is OK
+      def restOfNonIntegralNumber(): Unit = {
+        putChar('.')
+        if (ch == '.') nextChar()
         getFraction()
       }
-      def restOfUncertainToken() = {
-        def isEfd = ch match { case 'e' | 'E' | 'f' | 'F' | 'd' | 'D' => true ; case _ => false }
-        def isL   = ch match { case 'l' | 'L' => true ; case _ => false }
-
-        if (base <= 10 && isEfd)
-          getFraction()
-        else {
-          setStrVal()
-          if (isL) {
-            nextChar()
-            token = LONGLIT
-          }
-          else checkNoLetter()
+      // after int: 5e7f, 42L, 42.toDouble but not 42b. Repair 0d.
+      def restOfNumber(): Unit = {
+        ch match {
+          case 'e' | 'E' | 'f' | 'F' |
+               'd' | 'D' => if (cbuf.isEmpty) putChar('0'); restOfNonIntegralNumber()
+          case 'l' | 'L' => token = LONGLIT ; setStrVal() ; nextChar()
+          case _         => token = INTLIT  ; setStrVal() ; checkNoLetter()
         }
       }
 
-      if (base > 10 || ch != '.')
-        restOfUncertainToken()
-      else {
-        val lookahead = lookaheadReader
-        val c = lookahead.getc()
+      // consume leading digits, provisionally an Int
+      consumeDigits(if (base == 16) 16 else 10)
 
-        /* Prohibit 1. */
-        if (!isDigit(c))
-          return setStrVal()
-
-        val isDefinitelyNumber = (c: @switch) match {
-          /** Another digit is a giveaway. */
-          case '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'  =>
-            true
-
-          /* Backquoted idents like 22.`foo`. */
-          case '`' =>
-            return setStrVal()  /** Note the early return */
-
-          /* These letters may be part of a literal, or a method invocation on an Int.
-           */
-          case 'd' | 'D' | 'f' | 'F' =>
-            !isIdentifierPart(lookahead.getc())
-
-          /* A little more special handling for e.g. 5e7 */
-          case 'e' | 'E' =>
-            val ch = lookahead.getc()
-            !isIdentifierPart(ch) || (isDigit(ch) || ch == '+' || ch == '-')
-
-          case x  =>
-            !isIdentifierStart(x)
-        }
-        if (isDefinitelyNumber) restOfNumber()
-        else restOfUncertainToken()
-      }
+      val detectedFloat: Boolean = base != 16 && ch == '.' && isDigit(lookaheadReader.getc)
+      if (detectedFloat) restOfNonIntegralNumber() else restOfNumber()
     }
 
     /** Parse character literal if current character is followed by \',
      *  or follow with given op and return a symbol literal token
      */
-    def charLitOr(op: () => Unit) {
+    def charLitOr(op: () => Unit): Unit = {
       putChar(ch)
       nextChar()
       if (ch == '\'') {
@@ -1059,21 +1023,19 @@ trait Scanners extends ScannersCommon {
 
 // Errors -----------------------------------------------------------------
 
-    /** generate an error at the given offset
-    */
-    def syntaxError(off: Offset, msg: String) {
+    /** generate an error at the given offset */
+    def syntaxError(off: Offset, msg: String): Unit = {
       error(off, msg)
       token = ERROR
     }
 
-    /** generate an error at the current token offset
-    */
+    /** generate an error at the current token offset */
     def syntaxError(msg: String): Unit = syntaxError(offset, msg)
 
     def deprecationWarning(msg: String): Unit = deprecationWarning(offset, msg)
 
     /** signal an error where the input ended in the middle of a token */
-    def incompleteInputError(msg: String) {
+    def incompleteInputError(msg: String): Unit = {
       incompleteInputError(offset, msg)
       token = EOF
     }
@@ -1118,14 +1080,14 @@ trait Scanners extends ScannersCommon {
     def applyBracePatch(): Boolean = false
 
     /** overridden in UnitScanners */
-    def parenBalance(token: Int) = 0
+    def parenBalance(token: Token) = 0
 
     /** overridden in UnitScanners */
     def healBraces(): List[BracePatch] = List()
 
     /** Initialization method: read first char, then first token
      */
-    def init() {
+    def init(): Unit = {
       nextChar()
       nextToken()
     }
@@ -1133,7 +1095,7 @@ trait Scanners extends ScannersCommon {
 
   // ------------- keyword configuration -----------------------------------
 
-  private val allKeywords = List[(Name, Int)](
+  private val allKeywords = List[(Name, Token)](
     nme.ABSTRACTkw  -> ABSTRACT,
     nme.CASEkw      -> CASE,
     nme.CATCHkw     -> CATCH,
@@ -1187,8 +1149,8 @@ trait Scanners extends ScannersCommon {
     nme.MACROkw     -> IDENTIFIER,
     nme.THENkw      -> IDENTIFIER)
 
-  private var kwOffset: Int = -1
-  private val kwArray: Array[Int] = {
+  private var kwOffset: Offset = -1
+  private val kwArray: Array[Token] = {
     val (offset, arr) = createKeywordArray(allKeywords, IDENTIFIER)
     kwOffset = offset
     arr
@@ -1199,7 +1161,7 @@ trait Scanners extends ScannersCommon {
 // Token representation ----------------------------------------------------
 
   /** Returns the string representation of given token. */
-  def token2string(token: Int): String = (token: @switch) match {
+  def token2string(token: Token): String = (token: @switch) match {
     case IDENTIFIER | BACKQUOTED_IDENT => "identifier"
     case CHARLIT => "character literal"
     case INTLIT => "integer literal"
@@ -1230,7 +1192,7 @@ trait Scanners extends ScannersCommon {
       }
   }
 
-  class MalformedInput(val offset: Int, val msg: String) extends Exception
+  class MalformedInput(val offset: Offset, val msg: String) extends Exception
 
   /** A scanner for a given source file not necessarily attached to a compilation unit.
    *  Useful for looking inside source files that aren not currently compiled to see what's there
@@ -1250,15 +1212,15 @@ trait Scanners extends ScannersCommon {
   class UnitScanner(val unit: CompilationUnit, patches: List[BracePatch]) extends SourceFileScanner(unit.source) {
     def this(unit: CompilationUnit) = this(unit, List())
 
-    override def deprecationWarning(off: Offset, msg: String)   = unit.deprecationWarning(unit.position(off), msg)
-    override def error  (off: Offset, msg: String)              = unit.error(unit.position(off), msg)
-    override def incompleteInputError(off: Offset, msg: String) = unit.incompleteInputError(unit.position(off), msg)
+    override def deprecationWarning(off: Offset, msg: String)   = currentRun.reporting.deprecationWarning(unit.position(off), msg)
+    override def error  (off: Offset, msg: String)              = reporter.error(unit.position(off), msg)
+    override def incompleteInputError(off: Offset, msg: String) = currentRun.parsing.incompleteInputError(unit.position(off), msg)
 
     private var bracePatches: List[BracePatch] = patches
 
     lazy val parensAnalyzer = new ParensAnalyzer(unit, List())
 
-    override def parenBalance(token: Int) = parensAnalyzer.balance(token)
+    override def parenBalance(token: Token) = parensAnalyzer.balance(token)
 
     override def healBraces(): List[BracePatch] = {
       var patches: List[BracePatch] = List()
@@ -1408,7 +1370,7 @@ trait Scanners extends ScannersCommon {
 
     var tabSeen = false
 
-    def line(offset: Int): Int = {
+    def line(offset: Offset): Int = {
       def findLine(lo: Int, hi: Int): Int = {
         val mid = (lo + hi) / 2
         if (offset < lineStart(mid)) findLine(lo, mid - 1)
@@ -1419,7 +1381,7 @@ trait Scanners extends ScannersCommon {
       else findLine(0, lineStart.length - 1)
     }
 
-    def column(offset: Int): Int = {
+    def column(offset: Offset): Int = {
       var col = 0
       var i = offset - 1
       while (i >= 0 && buf(i) != CR && buf(i) != LF) {
@@ -1481,6 +1443,6 @@ trait Scanners extends ScannersCommon {
     // when skimming through the source file trying to heal braces
     override def emitIdentifierDeprecationWarnings = false
 
-    override def error(offset: Int, msg: String) {}
+    override def error(offset: Offset, msg: String): Unit = ()
   }
 }

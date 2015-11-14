@@ -205,7 +205,7 @@ extends AbstractMap[Long, T]
   }
 
   /**
-   * Loop over the keys of the map. The same as keys.foreach(f), but may
+   * Loop over the values of the map. The same as values.foreach(f), but may
    * be more efficient.
    *
    * @param f The loop body
@@ -220,7 +220,7 @@ extends AbstractMap[Long, T]
 
   override def isEmpty = this == LongMap.Nil
 
-  override def filter(f: ((Long, T)) => Boolean): LongMap[T] = this match {
+  override def filter(@plocal f: ((Long, T)) => Boolean): LongMap[T] = this match {
     case LongMap.Bin(prefix, mask, left, right) => {
       val (newleft, newright) = (left.filter(f), right.filter(f))
       if ((left eq newleft) && (right eq newright)) this

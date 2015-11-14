@@ -21,9 +21,10 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
   import global._
   import definitions._
 
-  final case class Suppression(exhaustive: Boolean, unreachable: Boolean)
+  final case class Suppression(suppressExhaustive: Boolean, suppressUnreachable: Boolean)
   object Suppression {
     val NoSuppression = Suppression(false, false)
+    val FullSuppression = Suppression(true, true)
   }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -159,7 +160,6 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       override def subPatternsAsSubstitution =
         Substitution(subPatBinders, subPatRefs) >> super.subPatternsAsSubstitution
 
-      import CODE._
       def bindSubPats(in: Tree): Tree =
         if (!emitVars) in
         else {
@@ -167,14 +167,23 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
           val usedBinders = new mutable.HashSet[Symbol]()
           // all potentially stored subpat binders
           val potentiallyStoredBinders = stored.unzip._1.toSet
+          def ref(sym: Symbol) =
+            if (potentiallyStoredBinders(sym)) usedBinders += sym
           // compute intersection of all symbols in the tree `in` and all potentially stored subpat binders
-          in.foreach(t => if (potentiallyStoredBinders(t.symbol)) usedBinders += t.symbol)
+          in.foreach {
+            case tt: TypeTree =>
+              tt.tpe foreach { // SI-7459 e.g. case Prod(t) => new t.u.Foo
+                case SingleType(_, sym) => ref(sym)
+                case _ =>
+              }
+            case t => ref(t.symbol)
+          }
 
           if (usedBinders.isEmpty) in
           else {
             // only store binders actually used
             val (subPatBindersStored, subPatRefsStored) = stored.filter{case (b, _) => usedBinders(b)}.unzip
-            Block(map2(subPatBindersStored.toList, subPatRefsStored.toList)(VAL(_) === _), in)
+            Block(map2(subPatBindersStored.toList, subPatRefsStored.toList)(ValDef(_, _)), in)
           }
         }
     }
@@ -193,13 +202,24 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
     case class ExtractorTreeMaker(extractor: Tree, extraCond: Option[Tree], nextBinder: Symbol)(
           val subPatBinders: List[Symbol],
           val subPatRefs: List[Tree],
+          val potentiallyMutableBinders: Set[Symbol],
           extractorReturnsBoolean: Boolean,
           val checkedLength: Option[Int],
           val prevBinder: Symbol,
           val ignoredSubPatBinders: Set[Symbol]
           ) extends FunTreeMaker with PreserveSubPatBinders {
 
-      def extraStoredBinders: Set[Symbol] = Set()
+      def extraStoredBinders: Set[Symbol] = potentiallyMutableBinders
+
+      debug.patmat(s"""
+        |ExtractorTreeMaker($extractor, $extraCond, $nextBinder) {
+        |  $subPatBinders
+        |  $subPatRefs
+        |  $extractorReturnsBoolean
+        |  $checkedLength
+        |  $prevBinder
+        |  $ignoredSubPatBinders
+        |}""".stripMargin)
 
       def chainBefore(next: Tree)(casegen: Casegen): Tree = {
         val condAndNext = extraCond match {
@@ -278,8 +298,8 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       def irrefutableExtractorType(tp: Type): Boolean = tp.resultType.dealias match {
         case TypeRef(_, SomeClass, _) => true
         // probably not useful since this type won't be inferred nor can it be written down (yet)
-        case ConstantType(Constant(true)) => true
-        case _ => false
+        case ConstantTrue => true
+        case _            => false
       }
 
       def unapply(xtm: ExtractorTreeMaker): Option[(Tree, Symbol)] = xtm match {
@@ -318,9 +338,9 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
 
         def outerTest(testedBinder: Symbol, expectedTp: Type): Tree = {
           val expectedOuter = expectedTp.prefix match {
-            case ThisType(clazz)      => THIS(clazz)
-            case pre if pre != NoType => REF(pre.prefix, pre.termSymbol)
-            case _ => mkTRUE // fallback for SI-6183
+            case ThisType(clazz) => This(clazz)
+            case NoType          => mkTRUE // fallback for SI-6183
+            case pre             => REF(pre.prefix, pre.termSymbol)
           }
 
           // ExplicitOuter replaces `Select(q, outerSym) OBJ_EQ expectedPrefix` by `Select(q, outerAccessor(outerSym.owner)) OBJ_EQ expectedPrefix`
@@ -386,8 +406,10 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       debug.patmat("TTTM"+((prevBinder, extractorArgTypeTest, testedBinder, expectedTp, nextBinderTp)))
 
       lazy val outerTestNeeded = (
-          !((expectedTp.prefix eq NoPrefix) || expectedTp.prefix.typeSymbol.isPackageClass)
-        && needsOuterTest(expectedTp, testedBinder.info, matchOwner))
+           (expectedTp.prefix ne NoPrefix)
+        && !expectedTp.prefix.typeSymbol.isPackageClass
+        && needsOuterTest(expectedTp, testedBinder.info, matchOwner)
+      )
 
       // the logic to generate the run-time test that follows from the fact that
       // a `prevBinder` is expected to have type `expectedTp`
@@ -397,44 +419,51 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       def renderCondition(cs: TypeTestCondStrategy): cs.Result = {
         import cs._
 
-        def default =
-          // do type test first to ensure we won't select outer on null
-          if (outerTestNeeded) and(typeTest(testedBinder, expectedTp), outerTest(testedBinder, expectedTp))
-          else typeTest(testedBinder, expectedTp)
-
         // propagate expected type
         def expTp(t: Tree): t.type = t setType expectedTp
 
+        def testedWide              = testedBinder.info.widen
+        def expectedWide            = expectedTp.widen
+        def isAnyRef                = testedWide <:< AnyRefTpe
+        def isAsExpected            = testedWide <:< expectedTp
+        def isExpectedPrimitiveType = isAsExpected && isPrimitiveValueType(expectedTp)
+        def isExpectedReferenceType = isAsExpected && (expectedTp <:< AnyRefTpe)
+        def mkNullTest              = nonNullTest(testedBinder)
+        def mkOuterTest             = outerTest(testedBinder, expectedTp)
+        def mkTypeTest              = typeTest(testedBinder, expectedWide)
+
+        def mkEqualsTest(lhs: Tree): cs.Result      = equalsTest(lhs, testedBinder)
+        def mkEqTest(lhs: Tree): cs.Result          = eqTest(lhs, testedBinder)
+        def addOuterTest(res: cs.Result): cs.Result = if (outerTestNeeded) and(res, mkOuterTest) else res
+
+        // If we conform to expected primitive type:
+        //   it cannot be null and cannot have an outer pointer. No further checking.
+        // If we conform to expected reference type:
+        //   have to test outer and non-null
+        // If we do not conform to expected type:
+        //   have to test type and outer (non-null is implied by successful type test)
+        def mkDefault = (
+          if (isExpectedPrimitiveType) tru
+          else addOuterTest(
+            if (isExpectedReferenceType) mkNullTest
+            else mkTypeTest
+          )
+        )
+
         // true when called to type-test the argument to an extractor
         // don't do any fancy equality checking, just test the type
-        if (extractorArgTypeTest) default
+        // TODO: verify that we don't need to special-case Array
+        // I think it's okay:
+        //  - the isInstanceOf test includes a test for the element type
+        //  - Scala's arrays are invariant (so we don't drop type tests unsoundly)
+        if (extractorArgTypeTest) mkDefault
         else expectedTp match {
-          // TODO: [SPEC] the spec requires `eq` instead of `==` for singleton types
-          // this implies sym.isStable
-          case SingleType(_, sym)                       => and(equalsTest(gen.mkAttributedQualifier(expectedTp), testedBinder), typeTest(testedBinder, expectedTp.widen))
-          // must use == to support e.g. List() == Nil
-          case ThisType(sym) if sym.isModule            => and(equalsTest(CODE.REF(sym), testedBinder), typeTest(testedBinder, expectedTp.widen))
-          case ConstantType(Constant(null)) if testedBinder.info.widen <:< AnyRefTpe
-                                                        => eqTest(expTp(CODE.NULL), testedBinder)
-          case ConstantType(const)                      => equalsTest(expTp(Literal(const)), testedBinder)
-          case ThisType(sym)                            => eqTest(expTp(This(sym)), testedBinder)
-
-          // TODO: verify that we don't need to special-case Array
-          // I think it's okay:
-          //  - the isInstanceOf test includes a test for the element type
-          //  - Scala's arrays are invariant (so we don't drop type tests unsoundly)
-          case _ if testedBinder.info.widen <:< expectedTp =>
-            // if the expected type is a primitive value type, it cannot be null and it cannot have an outer pointer
-            // since the types conform, no further checking is required
-            if (expectedTp.typeSymbol.isPrimitiveValueClass) tru
-            // have to test outer and non-null only when it's a reference type
-            else if (expectedTp <:< AnyRefTpe) {
-              // do non-null check first to ensure we won't select outer on null
-              if (outerTestNeeded) and(nonNullTest(testedBinder), outerTest(testedBinder, expectedTp))
-              else nonNullTest(testedBinder)
-            } else default
-
-          case _ => default
+          case SingleType(_, sym)                       => mkEqTest(gen.mkAttributedQualifier(expectedTp)) // SI-4577, SI-4897
+          case ThisType(sym) if sym.isModule            => and(mkEqualsTest(CODE.REF(sym)), mkTypeTest) // must use == to support e.g. List() == Nil
+          case ConstantType(Constant(null)) if isAnyRef => mkEqTest(expTp(CODE.NULL))
+          case ConstantType(const)                      => mkEqualsTest(expTp(Literal(const)))
+          case ThisType(sym)                            => mkEqTest(expTp(This(sym)))
+          case _                                        => mkDefault
         }
       }
 
@@ -498,7 +527,7 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
     def removeSubstOnly(makers: List[TreeMaker]) = makers filterNot (_.isInstanceOf[SubstOnlyTreeMaker])
 
     // a foldLeft to accumulate the localSubstitution left-to-right
-    // it drops SubstOnly tree makers, since their only goal in life is to propagate substitutions to the next tree maker, which is fullfilled by propagateSubstitution
+    // it drops SubstOnly tree makers, since their only goal in life is to propagate substitutions to the next tree maker, which is fulfilled by propagateSubstitution
     def propagateSubstitution(treeMakers: List[TreeMaker], initial: Substitution): List[TreeMaker] = {
       var accumSubst: Substitution = initial
       treeMakers foreach { maker =>
@@ -517,12 +546,13 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
 
     // pt is the fully defined type of the cases (either pt or the lub of the types of the cases)
     def combineCasesNoSubstOnly(scrut: Tree, scrutSym: Symbol, casesNoSubstOnly: List[List[TreeMaker]], pt: Type, owner: Symbol, matchFailGenOverride: Option[Tree => Tree]): Tree =
-      fixerUpper(owner, scrut.pos){
-        def matchFailGen = (matchFailGenOverride orElse Some(CODE.MATCHERROR(_: Tree)))
+      fixerUpper(owner, scrut.pos) {
+        def matchFailGen = matchFailGenOverride orElse Some(Throw(MatchErrorClass.tpe, _: Tree))
+
         debug.patmat("combining cases: "+ (casesNoSubstOnly.map(_.mkString(" >> ")).mkString("{", "\n", "}")))
 
         val (suppression, requireSwitch): (Suppression, Boolean) =
-          if (settings.XnoPatmatAnalysis) (Suppression.NoSuppression, false)
+          if (settings.XnoPatmatAnalysis) (Suppression.FullSuppression, false)
           else scrut match {
             case Typed(tree, tpt) =>
               val suppressExhaustive = tpt.tpe hasAnnotation UncheckedClass
@@ -531,15 +561,29 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
                 case _ => false
               }
               val suppression = Suppression(suppressExhaustive, supressUnreachable)
+              val hasSwitchAnnotation = treeInfo.isSwitchAnnotation(tpt.tpe)
               // matches with two or fewer cases need not apply for switchiness (if-then-else will do)
-              val requireSwitch = treeInfo.isSwitchAnnotation(tpt.tpe) && casesNoSubstOnly.lengthCompare(2) > 0
+              // `case 1 | 2` is considered as two cases.
+              def exceedsTwoCasesOrAlts = {
+                // avoids traversing the entire list if there are more than 3 elements
+                def lengthMax3[T](l: List[T]): Int = l match {
+                  case a :: b :: c :: _ => 3
+                  case cases =>
+                    cases.map({
+                      case AlternativesTreeMaker(_, alts, _) :: _ => lengthMax3(alts)
+                      case c => 1
+                    }).sum
+                }
+                lengthMax3(casesNoSubstOnly) > 2
+              }
+              val requireSwitch = hasSwitchAnnotation && exceedsTwoCasesOrAlts
               (suppression, requireSwitch)
             case _ =>
               (Suppression.NoSuppression, false)
           }
 
-        emitSwitch(scrut, scrutSym, casesNoSubstOnly, pt, matchFailGenOverride, suppression.exhaustive).getOrElse{
-          if (requireSwitch) typer.context.unit.warning(scrut.pos, "could not emit switch for @switch annotated match")
+        emitSwitch(scrut, scrutSym, casesNoSubstOnly, pt, matchFailGenOverride, unchecked = suppression.suppressExhaustive).getOrElse{
+          if (requireSwitch) reporter.warning(scrut.pos, "could not emit switch for @switch annotated match")
 
           if (casesNoSubstOnly nonEmpty) {
             // before optimizing, check casesNoSubstOnly for presence of a default case,
@@ -587,9 +631,8 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
             t.symbol.owner = currentOwner
           case d : DefTree if (d.symbol != NoSymbol) && ((d.symbol.owner == NoSymbol) || (d.symbol.owner == origOwner)) => // don't indiscriminately change existing owners! (see e.g., pos/t3440, pos/t3534, pos/unapplyContexts2)
             debug.patmat("def: "+ ((d, d.symbol.ownerChain, currentOwner.ownerChain)))
-            if(d.symbol.moduleClass ne NoSymbol)
-              d.symbol.moduleClass.owner = currentOwner
 
+            d.symbol.moduleClass andAlso (_.owner = currentOwner)
             d.symbol.owner = currentOwner
           // case _ if (t.symbol != NoSymbol) && (t.symbol ne null) =>
           debug.patmat("untouched "+ ((t, t.getClass, t.symbol.ownerChain, currentOwner.ownerChain)))
@@ -599,7 +642,7 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       }
 
       // override def apply
-      // debug.patmat("before fixerupper: "+ xTree)
+      // debug.patmat("before fixerUpper: "+ xTree)
       // currentRun.trackerFactory.snapshot()
       // debug.patmat("after fixerupper")
       // currentRun.trackerFactory.snapshot()

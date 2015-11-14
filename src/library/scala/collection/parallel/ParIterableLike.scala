@@ -29,6 +29,8 @@ import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.unchecked.uncheckedStable
 import scala.language.{ higherKinds, implicitConversions }
 
+import scala.collection.parallel.ParallelCollectionImplicits._
+
 
 /** A template trait for parallel collections of type `ParIterable[T]`.
  *
@@ -148,7 +150,8 @@ import scala.language.{ higherKinds, implicitConversions }
  *  @define indexsignalling
  *  This method will use `indexFlag` signalling capabilities. This means
  *  that splitters may set and read the `indexFlag` state.
- *
+ *  @define Coll `ParIterable`
+ *  @define coll parallel iterable
  */
 trait ParIterableLike[+T, +Repr <: ParIterable[T], +Sequential <: Iterable[T] with IterableLike[T, Sequential]]
 extends GenIterableLike[T, Repr]
@@ -335,7 +338,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
     def asCombiner = cb.asInstanceOf[Combiner[Elem, To]]
   }
 
-  protected[this] def bf2seq[S, That](bf: CanBuildFrom[Repr, S, That]) = new CanBuildFrom[Sequential, S, That] {
+  protected[this] def bf2seq[S, That](bf: CanBuildFrom[Repr, S, That]): CanBuildFrom[Sequential, S, That] = new CanBuildFrom[Sequential, S, That] {
     def apply(from: Sequential) = bf.apply(from.par.asInstanceOf[Repr]) // !!! we only use this on `this.seq`, and know that `this.seq.par.getClass == this.getClass`
     def apply() = bf.apply()
   }
@@ -416,8 +419,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *  may be invoked arbitrary number of times.
    *
    *  For example, one might want to process some elements and then produce a `Set`. In this
-   *  case, `seqop` would process an element and append it to the list, while `combop`
-   *  would concatenate two lists from different partitions together. The initial value
+   *  case, `seqop` would process an element and append it to the set, while `combop`
+   *  would concatenate two sets from different partitions together. The initial value
    *  `z` would be an empty set.
    *
    *  {{{
@@ -439,7 +442,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
     tasksupport.executeAndWaitResult(new Aggregate(() => z, seqop, combop, splitter))
   }
 
-  def foldLeft[S](z: S)(op: (S, T) => S): S = seq.foldLeft(z)(op)
+  def foldLeft[S](z: S)(@plocal op: (S, T) => S): S = seq.foldLeft(z)(op)
 
   def foldRight[S](z: S)(op: (T, S) => S): S = seq.foldRight(z)(op)
 
@@ -546,7 +549,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *  @param pred     predicate used to test the elements
    *  @return         an option value with the element if such an element exists, or `None` otherwise
    */
-  def find(pred: T => Boolean): Option[T] = {
+  def find(@plocal pred: T => Boolean): Option[T] = {
     tasksupport.executeAndWaitResult(new Find(pred, splitter assign new DefaultSignalling with VolatileAbort))
   }
 
@@ -586,6 +589,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
       def doesShareCombiners = false
     }
   }
+
+  def withFilter(pred: T => Boolean): Repr = filter(pred)
 
   def filter(pred: T => Boolean): Repr = {
     tasksupport.executeAndWaitResult(new Filter(pred, combinerFactory, splitter) mapResult { _.resultWithTaskSupport })
@@ -739,7 +744,7 @@ self: ParIterableLike[T, Repr, Sequential] =>
    *  The index flag is initially set to maximum integer value.
    *
    *  @param pred   the predicate used to test the elements
-   *  @return       the longest prefix of this $coll of elements that satisy the predicate `pred`
+   *  @return       the longest prefix of this $coll of elements that satisfy the predicate `pred`
    */
   def takeWhile(pred: T => Boolean): Repr = {
     val cbf = combinerFactory
@@ -839,14 +844,8 @@ self: ParIterableLike[T, Repr, Sequential] =>
     tasksupport.executeAndWaitResult(new ToParMap(combinerFactory(cbf), splitter)(ev) mapResult { _.resultWithTaskSupport })
   }
 
-  def view = new ParIterableView[T, Repr, Sequential] {
-    protected lazy val underlying = self.repr
-    protected[this] def viewIdentifier = ""
-    protected[this] def viewIdString = ""
-    override def seq = self.seq.view
-    def splitter = self.splitter
-    def size = splitter.remaining
-  }
+  @deprecated("Use .seq.view instead", "2.11.0")
+  def view = seq.view
 
   override def toArray[U >: T: ClassTag]: Array[U] = {
     val arr = new Array[U](size)

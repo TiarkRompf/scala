@@ -15,7 +15,14 @@ import generic._
 import mutable.Builder
 
 /** A base trait for linear sequences.
+ *
  *  $linearSeqInfo
+ *
+ *  @define  linearSeqInfo
+ *  Linear sequences have reasonably efficient `head`, `tail`, and `isEmpty` methods.
+ *  If these methods provide the fastest way to traverse the collection, a 
+ *  collection `Coll` that extends this trait should also extend
+ *  `LinearSeqOptimized[A, Coll[A]]`.
  */
 trait LinearSeq[+A] extends Seq[A]
                             with GenericTraversableTemplate[A, LinearSeq]
@@ -25,7 +32,7 @@ trait LinearSeq[+A] extends Seq[A]
 }
 
 /** $factoryInfo
- *  The current default implementation of a $Coll is a `Vector`.
+ *  The current default implementation of a $Coll is a `List`.
  *  @define coll linear sequence
  *  @define Coll `LinearSeq`
  */

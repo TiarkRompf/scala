@@ -127,12 +127,14 @@ object Numeric {
     def toLong(x: Float): Long = x.toLong
     def toFloat(x: Float): Float = x
     def toDouble(x: Float): Double = x.toDouble
+    // logic in Numeric base trait mishandles abs(-0.0f)
+    override def abs(x: Float): Float = math.abs(x)
   }
   trait FloatIsFractional extends FloatIsConflicted with Fractional[Float] {
     def div(x: Float, y: Float): Float = x / y
   }
   trait FloatAsIfIntegral extends FloatIsConflicted with Integral[Float] {
-    def quot(x: Float, y: Float): Float = (BigDecimal(x) / BigDecimal(y)).floatValue
+    def quot(x: Float, y: Float): Float = (BigDecimal(x) quot BigDecimal(y)).floatValue
     def rem(x: Float, y: Float): Float = (BigDecimal(x) remainder BigDecimal(y)).floatValue
   }
   implicit object FloatIsFractional extends FloatIsFractional with Ordering.FloatOrdering
@@ -149,12 +151,14 @@ object Numeric {
     def toLong(x: Double): Long = x.toLong
     def toFloat(x: Double): Float = x.toFloat
     def toDouble(x: Double): Double = x
+    // logic in Numeric base trait mishandles abs(-0.0)
+    override def abs(x: Double): Double = math.abs(x)
   }
   trait DoubleIsFractional extends DoubleIsConflicted with Fractional[Double] {
     def div(x: Double, y: Double): Double = x / y
   }
   trait DoubleAsIfIntegral extends DoubleIsConflicted with Integral[Double] {
-    def quot(x: Double, y: Double): Double = (BigDecimal(x) / BigDecimal(y)).doubleValue
+    def quot(x: Double, y: Double): Double = (BigDecimal(x) quot BigDecimal(y)).doubleValue
     def rem(x: Double, y: Double): Double = (BigDecimal(x) remainder BigDecimal(y)).doubleValue
   }
 
@@ -174,7 +178,7 @@ object Numeric {
     def div(x: BigDecimal, y: BigDecimal): BigDecimal = x / y
   }
   trait BigDecimalAsIfIntegral extends BigDecimalIsConflicted with Integral[BigDecimal] {
-    def quot(x: BigDecimal, y: BigDecimal): BigDecimal = x / y
+    def quot(x: BigDecimal, y: BigDecimal): BigDecimal = x quot y
     def rem(x: BigDecimal, y: BigDecimal): BigDecimal = x remainder y
   }
 

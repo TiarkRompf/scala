@@ -119,13 +119,13 @@ extends AbstractSeq[A]
    *  @param xs the traversable object.
    *  @return the stack with the new elements on top.
    */
-  def pushAll(xs: TraversableOnce[A]): this.type = { xs.seq foreach push ; this }
+  def pushAll(xs: TraversableOnce[A]): this.type = { xs foreach push ; this }
 
   /** Returns the top element of the stack. This method will not remove
    *  the element from the stack. An error is signaled if there is no
    *  element on the stack.
    *
-   *  @throws Predef.NoSuchElementException
+   *  @throws java.util.NoSuchElementException
    *  @return the top element
    */
   def top: A =
@@ -133,7 +133,7 @@ extends AbstractSeq[A]
 
   /** Removes the top element from the stack.
    *
-   *  @throws Predef.NoSuchElementException
+   *  @throws java.util.NoSuchElementException
    *  @return the top element
    */
   def pop(): A = {

@@ -9,7 +9,11 @@ import base.comment._
 import diagram._
 
 import scala.collection._
+import scala.tools.nsc.doc.html.HtmlPage
+import scala.tools.nsc.doc.html.page.diagram.{DotRunner}
 import scala.util.matching.Regex
+import scala.reflect.macros.internal.macroImpl
+import scala.xml.NodeSeq
 import symtab.Flags
 
 import io._
@@ -46,6 +50,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
       thisFactory.universe = thisUniverse
       val settings = thisFactory.settings
       val rootPackage = modelCreation.createRootPackage
+      lazy val dotRunner = new DotRunner(settings)
     }
     _modelFinished = true
     // complete the links between model entities, everthing that couldn't have been done before
@@ -80,7 +85,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
     def inTemplate: TemplateImpl = inTpl
     def toRoot: List[EntityImpl] = this :: inTpl.toRoot
     def qualifiedName = name
-    def annotations = sym.annotations.map(makeAnnotation)
+    def annotations = sym.annotations.filterNot(_.tpe =:= typeOf[macroImpl]).map(makeAnnotation)
     def inPackageObject: Boolean = sym.owner.isModuleClass && sym.owner.sourceModule.isPackageObject
     def isType = sym.name.isTypeName
   }
@@ -145,6 +150,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
        * any abstract terms, otherwise it would fail compilation. So we reset the DEFERRED flag. */
       if (!sym.isTrait && (sym hasFlag Flags.DEFERRED) && (!isImplicitlyInherited)) fgs += Paragraph(Text("abstract"))
       if (!sym.isModule && (sym hasFlag Flags.FINAL)) fgs += Paragraph(Text("final"))
+      if (sym.isMacro) fgs += Paragraph(Text("macro"))
       fgs.toList
     }
     def deprecation =
@@ -305,14 +311,13 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
       else None
     }
 
+    private def templateAndType(ancestor: Symbol): (TemplateImpl, TypeEntity) = (makeTemplate(ancestor), makeType(reprSymbol.info.baseType(ancestor), this))
     lazy val (linearizationTemplates, linearizationTypes) =
-      reprSymbol.ancestors map { ancestor =>
-        (makeTemplate(ancestor), makeType(reprSymbol.info.baseType(ancestor), this))
-      } unzip
+      (reprSymbol.ancestors map templateAndType).unzip
 
     /* Subclass cache */
     private lazy val subClassesCache = (
-      if (sym == AnyRefClass) null
+      if (sym == AnyRefClass || sym == AnyClass) null
       else mutable.ListBuffer[DocTemplateEntity]()
     )
     def registerSubClass(sc: DocTemplateEntity): Unit = {
@@ -321,7 +326,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
     }
     def directSubClasses = if (subClassesCache == null) Nil else subClassesCache.toList
 
-    /* Implcitly convertible class cache */
+    /* Implicitly convertible class cache */
     private var implicitlyConvertibleClassesCache: mutable.ListBuffer[(DocTemplateImpl, ImplicitConversionImpl)] = null
     def registerImplicitlyConvertibleClass(dtpl: DocTemplateImpl, conv: ImplicitConversionImpl): Unit = {
       if (implicitlyConvertibleClassesCache == null)
@@ -473,7 +478,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
     override lazy val comment = {
       def nonRootTemplate(sym: Symbol): Option[DocTemplateImpl] =
         if (sym eq RootPackage) None else findTemplateMaybe(sym)
-      /* Variable precendence order for implicitly added members: Take the variable defifinitions from ...
+      /* Variable precendence order for implicitly added members: Take the variable definitions from ...
        * 1. the target of the implicit conversion
        * 2. the definition template (owner)
        * 3. the current template
@@ -752,8 +757,10 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
         })
       }
       else if (bSym.isConstructor)
-        if (conversion.isDefined)
-          None // don't list constructors inherted by implicit conversion
+        if (conversion.isDefined || (bSym.enclClass.isAbstract && (bSym.enclClass.isSealed || bSym.enclClass.isFinal)))
+          // don't list constructors inherited by implicit conversion
+          // and don't list constructors of abstract sealed types (they cannot be accessed anyway)
+          None
         else
           Some(new NonTemplateParamMemberImpl(bSym, conversion, useCaseOf, inTpl) with Constructor {
             override def isConstructor = true
@@ -841,7 +848,7 @@ class ModelFactory(val global: Global, val settings: doc.Settings) {
                 def value = tree
               }
             }
-          case None => 
+          case None =>
             argTrees map { tree =>
               new ValueArgument {
                 def parameter = None

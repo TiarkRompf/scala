@@ -45,27 +45,19 @@
                     "extension": "jar",
                     "name": "scala-reflect",
                     "organization": "org.scala-lang"
+                },
+                {
+                    "extension": "jar",
+                    "name": "scala-xml",
+                    "organization": "org.scala-lang.modules"
+                },
+                {
+                    "extension": "jar",
+                    "name": "scala-parser-combinators",
+                    "organization": "org.scala-lang.modules"
                 }
             ],
             "name": "scala-compiler",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "scala-swing",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-library",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scala-swing",
             "organization": "org.scala-lang"
         },
         {
@@ -90,136 +82,6 @@
             "artifacts": [
                 {
                     "extension": "jar",
-                    "name": "scala-xml",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-library",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scala-xml",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "scala-parser-combinators",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-library",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scala-parser-combinators",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "scalacheck",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-library",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-actors",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-parser-combinators",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scalacheck",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "scala-partest",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-compiler",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scalap",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-xml",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scalacheck",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scala-partest",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "scaladoc",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "dependencies": [
-                {
-                    "extension": "jar",
-                    "name": "scala-compiler",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-partest",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-xml",
-                    "organization": "org.scala-lang"
-                },
-                {
-                    "extension": "jar",
-                    "name": "scala-parser-combinators",
-                    "organization": "org.scala-lang"
-                }
-            ],
-            "name": "scaladoc",
-            "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
                     "name": "scalap",
                     "organization": "org.scala-lang"
                 }
@@ -233,18 +95,6 @@
             ],
             "name": "scalap",
             "organization": "org.scala-lang"
-        },
-        {
-            "artifacts": [
-                {
-                    "extension": "jar",
-                    "name": "continuations",
-                    "organization": "org.scala-lang.plugins"
-                }
-            ],
-            "dependencies": [],
-            "name": "continuations",
-            "organization": "org.scala-lang.plugins"
         }
     ]
 }

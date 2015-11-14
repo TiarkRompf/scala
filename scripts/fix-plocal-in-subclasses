@@ -1,0 +1,6 @@
+#!/bin/bash
+[ $# -lt 1 ] && echo "Usage: $0 <ant-quick.lib-stdout>" >&2 && exit 1
+ql='\[quick\.library\]'
+grep "$ql.*overriding method.*with method" "$1" | \
+    sed "s|$ql \([^:]\+\):\([^:]\+\).*overriding method \(\w\+\).*|\1 \2 \3|" | \
+    while read f l m; do sed -i "${l}s/\(def $m\)(\(\([fpq]\|pred\):\)/\1(@plocal \2/" $f; done

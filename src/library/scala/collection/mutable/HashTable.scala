@@ -38,6 +38,9 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
   // However, I'm afraid it's too late now for such breaking change.
   import HashTable._
 
+  protected type LT = Any
+  protected type plocal = local[LT]
+
   @transient protected var _loadFactor = defaultLoadFactor
 
   /** The actual hash table.
@@ -82,7 +85,8 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
    * Initializes the collection from the input stream. `readEntry` will be called for each
    * entry to be read from the input stream.
    */
-  private[collection] def init(in: java.io.ObjectInputStream, readEntry: => Entry) {
+  private[collection] def init(in: java.io.ObjectInputStream, @plocal readEntry: => Entry)(@plocal cc: CanThrow) {
+  ESC.THROW{
     in.defaultReadObject
 
     _loadFactor = in.readInt()
@@ -106,7 +110,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
       addEntry(readEntry)
       index += 1
     }
-  }
+  }(cc)}
 
   /**
    * Serializes the collection to the output stream by saving the load factor, collection
@@ -115,18 +119,20 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
    * `foreachEntry` determines the order in which the key/value pairs are saved to the stream. To
    * deserialize, `init` should be used.
    */
-  private[collection] def serializeTo(out: java.io.ObjectOutputStream, writeEntry: Entry => Unit) {
+  private[collection] def serializeTo(out: java.io.ObjectOutputStream, @plocal writeEntry: Entry => Unit)(@plocal cc: CanThrow) {
+  ESC.THROW{
     out.defaultWriteObject
     out.writeInt(_loadFactor)
     out.writeInt(tableSize)
     out.writeInt(seedvalue)
     out.writeBoolean(isSizeMapDefined)
-
+  }(cc)
     foreachEntry(writeEntry)
   }
 
   /** Find entry with given key in table, null if not found.
    */
+  @deprecatedOverriding("No sensible way to override findEntry as private findEntry0 is used in multiple places internally.", "2.11.0")
   protected def findEntry(key: A): Entry =
     findEntry0(key, index(elemHashCode(key)))
 
@@ -139,6 +145,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
   /** Add entry to table
    *  pre: no entry with same key exists
    */
+  @deprecatedOverriding("No sensible way to override addEntry as private addEntry0 is used in multiple places internally.", "2.11.0")
   protected def addEntry(e: Entry) {
     addEntry0(e, index(elemHashCode(e.key)))
   }
@@ -172,6 +179,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
 
   /** Remove entry from table if present.
    */
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def removeEntry(key: A) : Entry = {
     val h = index(elemHashCode(key))
     var e = table(h).asInstanceOf[Entry]
@@ -218,7 +226,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
   }
 
   /** Avoid iterator for a 2x faster traversal. */
-  protected def foreachEntry[U](f: Entry => U) {
+  protected def foreachEntry[U](@plocal f: Entry => U) {
     val iterTable = table
     var idx       = lastPopulatedIndex
     var es        = iterTable(idx)
@@ -282,14 +290,17 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
    * is converted into a parallel hash table, the size map is initialized, as it will be needed
    * there.
    */
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def nnSizeMapAdd(h: Int) = if (sizemap ne null) {
     sizemap(h >> sizeMapBucketBitSize) += 1
   }
 
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def nnSizeMapRemove(h: Int) = if (sizemap ne null) {
     sizemap(h >> sizeMapBucketBitSize) -= 1
   }
 
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def nnSizeMapReset(tableLength: Int) = if (sizemap ne null) {
     val nsize = calcSizeMapSize(tableLength)
     if (sizemap.length != nsize) sizemap = new Array[Int](nsize)
@@ -298,6 +309,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
 
   private[collection] final def totalSizeMapBuckets = if (sizeMapBucketSize < table.length) 1 else table.length / sizeMapBucketSize
 
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def calcSizeMapSize(tableLength: Int) = (tableLength >> sizeMapBucketBitSize) + 1
 
   // discards the previous sizemap and only allocates a new one
@@ -306,6 +318,7 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
   }
 
   // discards the previous sizemap and populates the new one
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def sizeMapInitAndRebuild() {
     sizeMapInit(table.length)
 
@@ -336,8 +349,10 @@ trait HashTable[A, Entry >: Null <: HashEntry[A, Entry]] extends HashTable.HashU
     println(sizemap.toList)
   }
 
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def sizeMapDisable() = sizemap = null
 
+  @deprecatedOverriding("Internal implementation does not admit sensible overriding of this method.", "2.11.0")
   protected def isSizeMapDefined = sizemap ne null
 
   // override to automatically initialize the size map
@@ -439,7 +454,7 @@ private[collection] object HashTable {
       // h
 
       /* OLD VERSION
-       * quick, but bad for sequence 0-10000 - little enthropy in higher bits
+       * quick, but bad for sequence 0-10000 - little entropy in higher bits
        * since 2003 */
       // var h: Int = hcode + ~(hcode << 9)
       // h = h ^ (h >>> 14)

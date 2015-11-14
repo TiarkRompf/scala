@@ -213,7 +213,7 @@ sealed abstract class IntMap[+T] extends AbstractMap[Int, T]
   }
 
   /**
-   * Loop over the keys of the map. The same as `keys.foreach(f)`, but may
+   * Loop over the values of the map. The same as `values.foreach(f)`, but may
    * be more efficient.
    *
    * @param f The loop body
@@ -228,7 +228,7 @@ sealed abstract class IntMap[+T] extends AbstractMap[Int, T]
 
   override def isEmpty = this == IntMap.Nil
 
-  override def filter(f: ((Int, T)) => Boolean): IntMap[T] = this match {
+  override def filter(@plocal f: ((Int, T)) => Boolean): IntMap[T] = this match {
     case IntMap.Bin(prefix, mask, left, right) => {
       val (newleft, newright) = (left.filter(f), right.filter(f))
       if ((left eq newleft) && (right eq newright)) this

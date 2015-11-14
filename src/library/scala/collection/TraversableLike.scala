@@ -54,7 +54,7 @@ import scala.language.higherKinds
  *  `HashMap` of objects. The traversal order for hash maps will
  *  depend on the hash codes of its elements, and these hash codes might
  *  differ from one run to the next. By contrast, a `LinkedHashMap`
- *  is ordered because it's `foreach` method visits elements in the
+ *  is ordered because its `foreach` method visits elements in the
  *  order they were inserted into the `HashMap`.
  *
  *  @author Martin Odersky
@@ -76,6 +76,8 @@ trait TraversableLike[+A, +Repr] extends Any
   self =>
 
   import Traversable.breaks._
+
+  type LT
 
   /** The type implementing this traversable */
   protected[this] type Self = Repr
@@ -121,7 +123,7 @@ trait TraversableLike[+A, +Repr] extends Any
    *    It's important to implement this method in an efficient way.
    *
    */
-  def foreach[U](f: A => U): Unit
+  def foreach[U](@plocal f: A => U): Unit
 
   /** Tests whether this $coll is empty.
    *
@@ -235,7 +237,7 @@ trait TraversableLike[+A, +Repr] extends Any
   def ++:[B >: A, That](that: Traversable[B])(implicit bf: CanBuildFrom[Repr, B, That]): That =
     (that ++ seq)(breakOut)
 
-  def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def map[B, That](@plocal f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     def builder = { // extracted to keep method size under 35 bytes, so that it can be JIT-inlined
       val b = bf(repr)
       b.sizeHint(this)
@@ -246,14 +248,14 @@ trait TraversableLike[+A, +Repr] extends Any
     b.result
   }
 
-  def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def flatMap[B, That](@plocal f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     def builder = bf(repr) // extracted to keep method size under 35 bytes, so that it can be JIT-inlined
     val b = builder
     for (x <- this) b ++= f(x).seq
     b.result
   }
 
-  private def filterImpl(p: A => Boolean, isFlipped: Boolean): Repr = {
+  private def filterImpl(@plocal p: A => Boolean, isFlipped: Boolean): Repr = {
     val b = newBuilder
     for (x <- this)
       if (p(x) != isFlipped) b += x
@@ -267,7 +269,7 @@ trait TraversableLike[+A, +Repr] extends Any
    *  @return      a new $coll consisting of all elements of this $coll that satisfy the given
    *               predicate `p`. The order of the elements is preserved.
    */
-  def filter(p: A => Boolean): Repr = filterImpl(p, isFlipped = false)
+  def filter(@plocal p: A => Boolean): Repr = filterImpl(p, isFlipped = false)
 
   /** Selects all elements of this $coll which do not satisfy a predicate.
    *
@@ -275,9 +277,9 @@ trait TraversableLike[+A, +Repr] extends Any
    *  @return      a new $coll consisting of all elements of this $coll that do not satisfy the given
    *               predicate `p`. The order of the elements is preserved.
    */
-  def filterNot(p: A => Boolean): Repr = filterImpl(p, isFlipped = true)
+  def filterNot(@plocal p: A => Boolean): Repr = filterImpl(p, isFlipped = true)
 
-  def collect[B, That](pf: PartialFunction[A, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def collect[B, That](@plocal pf: PartialFunction[A, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     foreach(pf.runWith(b += _))
     b.result
@@ -320,13 +322,13 @@ trait TraversableLike[+A, +Repr] extends Any
    *           that don't. The relative order of the elements in the resulting ${coll}s
    *           is the same as in the original $coll.
    */
-  def partition(p: A => Boolean): (Repr, Repr) = {
+  def partition(@plocal p: A => Boolean): (Repr, Repr) = {
     val l, r = newBuilder
     for (x <- this) (if (p(x)) l else r) += x
     (l.result, r.result)
   }
 
-  def groupBy[K](f: A => K): immutable.Map[K, Repr] = {
+  def groupBy[K](@plocal f: A => K): immutable.Map[K, Repr] = {
     val m = mutable.Map.empty[K, Builder[A, Repr]]
     for (elem <- this) {
       val key = f(elem)
@@ -345,10 +347,10 @@ trait TraversableLike[+A, +Repr] extends Any
    *  $mayNotTerminateInf
    *
    *  @param   p     the predicate used to test elements.
-   *  @return        `true` if the given predicate `p` holds for all elements
-   *                 of this $coll, otherwise `false`.
+   *  @return        `true`  if this $coll is empty, otherwise `true` if the given predicate `p`
+    *                holds for all elements of this $coll, otherwise `false`.
    */
-  def forall(p: A => Boolean): Boolean = {
+  def forall(@plocal p: A => Boolean): Boolean = {
     var result = true
     breakable {
       for (x <- this)
@@ -362,10 +364,10 @@ trait TraversableLike[+A, +Repr] extends Any
    *  $mayNotTerminateInf
    *
    *  @param   p     the predicate used to test elements.
-   *  @return        `true` if the given predicate `p` holds for some of the
-   *                 elements of this $coll, otherwise `false`.
+   *  @return        `false` if this $coll is empty, otherwise `true` if the given predicate `p`
+    *                holds for some of the elements of this $coll, otherwise `false`
    */
-  def exists(p: A => Boolean): Boolean = {
+  def exists(@plocal p: A => Boolean): Boolean = {
     var result = false
     breakable {
       for (x <- this)
@@ -383,7 +385,7 @@ trait TraversableLike[+A, +Repr] extends Any
    *  @return     an option value containing the first element in the $coll
    *              that satisfies `p`, or `None` if none exists.
    */
-  def find(p: A => Boolean): Option[A] = {
+  def find(@plocal p: A => Boolean): Option[A] = {
     var result: Option[A] = None
     breakable {
       for (x <- this)
@@ -392,9 +394,9 @@ trait TraversableLike[+A, +Repr] extends Any
     result
   }
 
-  def scan[B >: A, That](z: B)(op: (B, B) => B)(implicit cbf: CanBuildFrom[Repr, B, That]): That = scanLeft(z)(op)
+  def scan[B >: A, That](z: B)(@plocal op: (B, B) => B)(implicit cbf: CanBuildFrom[Repr, B, That]): That = scanLeft(z)(op)
 
-  def scanLeft[B, That](z: B)(op: (B, A) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def scanLeft[B, That](z: B)(@plocal op: (B, A) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     b.sizeHint(this, 1)
     var acc = z
@@ -404,7 +406,7 @@ trait TraversableLike[+A, +Repr] extends Any
   }
 
   @migration("The behavior of `scanRight` has changed. The previous behavior can be reproduced with scanRight.reverse.", "2.9.0")
-  def scanRight[B, That](z: B)(op: (A, B) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def scanRight[B, That](z: B)(@plocal op: (A, B) => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     var scanned = List(z)
     var acc = z
     for (x <- reversed) {
@@ -419,7 +421,7 @@ trait TraversableLike[+A, +Repr] extends Any
   /** Selects the first element of this $coll.
    *  $orderDependent
    *  @return  the first element of this $coll.
-   *  @throws `NoSuchElementException` if the $coll is empty.
+   *  @throws NoSuchElementException if the $coll is empty.
    */
   def head: A = {
     var result: () => A = () => throw new NoSuchElementException
@@ -473,7 +475,7 @@ trait TraversableLike[+A, +Repr] extends Any
    *  $orderDependent
    *  @return  a $coll consisting of all elements of this $coll
    *           except the last one.
-   *  @throws `UnsupportedOperationException` if the $coll is empty.
+   *  @throws UnsupportedOperationException if the $coll is empty.
    */
   def init: Repr = {
     if (isEmpty) throw new UnsupportedOperationException("empty.init")
@@ -481,7 +483,7 @@ trait TraversableLike[+A, +Repr] extends Any
     var follow = false
     val b = newBuilder
     b.sizeHint(this, -1)
-    for (x <- this.seq) {
+    for (x <- this) {
       if (follow) b += lst
       else follow = true
       lst = x
@@ -506,7 +508,7 @@ trait TraversableLike[+A, +Repr] extends Any
   private[this] def sliceInternal(from: Int, until: Int, b: Builder[A, Repr]): Repr = {
     var i = 0
     breakable {
-      for (x <- this.seq) {
+      for (x <- this) {
         if (i >= from) b += x
         i += 1
         if (i >= until) break
@@ -533,7 +535,7 @@ trait TraversableLike[+A, +Repr] extends Any
     }
   }
 
-  def takeWhile(p: A => Boolean): Repr = {
+  def takeWhile(@plocal p: A => Boolean): Repr = {
     val b = newBuilder
     breakable {
       for (x <- this) {
@@ -544,7 +546,7 @@ trait TraversableLike[+A, +Repr] extends Any
     b.result
   }
 
-  def dropWhile(p: A => Boolean): Repr = {
+  def dropWhile(@plocal p: A => Boolean): Repr = {
     val b = newBuilder
     var go = false
     for (x <- this) {
@@ -554,7 +556,7 @@ trait TraversableLike[+A, +Repr] extends Any
     b.result
   }
 
-  def span(p: A => Boolean): (Repr, Repr) = {
+  def span(@plocal p: A => Boolean): (Repr, Repr) = {
     val l, r = newBuilder
     var toLeft = true
     for (x <- this) {
@@ -623,7 +625,9 @@ trait TraversableLike[+A, +Repr] extends Any
     }
   }
 
+  @deprecatedOverriding("Enforce contract of toTraversable that if it is Traversable it returns itself.", "2.11.0")
   def toTraversable: Traversable[A] = thisCollection
+  
   def toIterator: Iterator[A] = toStream.iterator
   def toStream: Stream[A] = toBuffer.toStream
   // Override to provide size hint.
@@ -695,12 +699,12 @@ trait TraversableLike[+A, +Repr] extends Any
    *             All these operations apply to those elements of this $coll
    *             which satisfy the predicate `p`.
    */
-  def withFilter(p: A => Boolean): FilterMonadic[A, Repr] = new WithFilter(p)
+  def withFilter(@plocal p: A => Boolean): FilterMonadic[A, Repr] = new WithFilter(p)
 
   /** A class supporting filtered operations. Instances of this class are
    *  returned by method `withFilter`.
    */
-  class WithFilter(p: A => Boolean) extends FilterMonadic[A, Repr] {
+  class WithFilter(@plocal p: A => Boolean) extends FilterMonadic[A, Repr] {
 
     /** Builds a new collection by applying a function to all elements of the
      *  outer $coll containing this `WithFilter` instance that satisfy predicate `p`.
@@ -720,7 +724,7 @@ trait TraversableLike[+A, +Repr] extends Any
      *                  `f` to each element of the outer $coll that satisfies
      *                  predicate `p` and collecting the results.
      */
-    def map[B, That](f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+    def map[B, That](@plocal f: A => B)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
       val b = bf(repr)
       for (x <- self)
         if (p(x)) b += f(x)
@@ -751,7 +755,7 @@ trait TraversableLike[+A, +Repr] extends Any
      *                  outer $coll that satisfies predicate `p` and concatenating
      *                  the results.
      */
-    def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+    def flatMap[B, That](@plocal f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = {
       val b = bf(repr)
       for (x <- self)
         if (p(x)) b ++= f(x).seq
@@ -771,7 +775,7 @@ trait TraversableLike[+A, +Repr] extends Any
      *  @usecase def foreach(f: A => Unit): Unit
      *    @inheritdoc
      */
-    def foreach[U](f: A => U): Unit =
+    def foreach[U](@plocal f: A => U): Unit =
       for (x <- self)
         if (p(x)) f(x)
 
@@ -783,7 +787,7 @@ trait TraversableLike[+A, +Repr] extends Any
      *             All these operations apply to those elements of this $coll which
      *             satisfy the predicate `q` in addition to the predicate `p`.
      */
-    def withFilter(q: A => Boolean): WithFilter =
+    def withFilter(@plocal q: A => Boolean): WithFilter =
       new WithFilter(x => p(x) && q(x))
   }
 

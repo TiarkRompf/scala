@@ -16,6 +16,11 @@ import generic._
  *  To prioritize elements of type A there must be an implicit
  *  Ordering[A] available at creation.
  *
+ *  Only the `dequeue` and `dequeueAll` methods will return methods in priority
+ *  order (while removing elements from the heap).  Standard collection methods
+ *  including `drop` and `iterator` will remove or traverse the heap in whichever
+ *  order seems most convenient.
+ *
  *  @tparam A    type of the elements in this priority queue.
  *  @param ord   implicit ordering used to compare the elements of type `A`.
  *
@@ -30,6 +35,7 @@ import generic._
  *  @define mayNotTerminateInf
  *  @define willNotTerminateInf
  */
+@deprecatedInheritance("PriorityQueue is not intended to be subclassed due to extensive private implementation details.", "2.11.0")
 class PriorityQueue[A](implicit val ord: Ordering[A])
    extends AbstractIterable[A]
       with Iterable[A]
@@ -42,7 +48,7 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
 {
   import ord._
 
-  private class ResizableArrayAccess[A] extends AbstractSeq[A] with ResizableArray[A] {
+  private class ResizableArrayAccess[A] extends AbstractSeq[A] with ResizableArray[A] with Serializable {
     def p_size0 = size0
     def p_size0_=(s: Int) = size0 = s
     def p_array = array
@@ -120,7 +126,7 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
   /** Returns the element with the highest priority in the queue,
    *  and removes this element from the queue.
    *
-   *  @throws Predef.NoSuchElementException
+   *  @throws java.util.NoSuchElementException
    *  @return   the element with the highest priority.
    */
   def dequeue(): A =
@@ -241,13 +247,6 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
    *  @return  a priority queue with the same elements.
    */
   override def clone(): PriorityQueue[A] = new PriorityQueue[A] ++= this.iterator
-
-  // def printstate() {
-  //   println("-----------------------")
-  //   println("Size: " + resarr.p_size0)
-  //   println("Internal array: " + resarr.p_array.toList)
-  //   println(toString)
-  // }
 }
 
 

@@ -28,7 +28,7 @@ private[process] trait ProcessBuilderImpl {
     override def canPipeTo = true
   }
 
-  private[process] class URLInput(url: URL) extends IStreamBuilder(url.openStream, url.toString)
+  private[process] class URLInput(url: URL) extends IStreamBuilder(url.openStream(), url.toString)
   private[process] class FileInput(file: File) extends IStreamBuilder(new FileInputStream(file), file.getAbsolutePath)
   private[process] class FileOutput(file: File, append: Boolean) extends OStreamBuilder(new FileOutputStream(file, append), file.getAbsolutePath)
 
@@ -70,11 +70,11 @@ private[process] trait ProcessBuilderImpl {
       import io._
 
       // spawn threads that process the input, output, and error streams using the functions defined in `io`
-      val inThread  = Spawn(writeInput(process.getOutputStream), daemon = true)
-      val outThread = Spawn(processOutput(process.getInputStream), daemonizeThreads)
+      val inThread  = Spawn(writeInput(process.getOutputStream()), daemon = true)
+      val outThread = Spawn(processOutput(process.getInputStream()), daemonizeThreads)
       val errorThread =
         if (p.redirectErrorStream) Nil
-        else List(Spawn(processError(process.getErrorStream), daemonizeThreads))
+        else List(Spawn(processError(process.getErrorStream()), daemonizeThreads))
 
       new SimpleProcess(process, inThread, outThread :: errorThread)
     }
@@ -104,10 +104,10 @@ private[process] trait ProcessBuilderImpl {
     def !!<                     = slurp(None, withIn = true)
     def !!<(log: ProcessLogger) = slurp(Some(log), withIn = true)
 
-    def lines: Stream[String]                       = lines(withInput = false, nonZeroException = true, None)
-    def lines(log: ProcessLogger): Stream[String]   = lines(withInput = false, nonZeroException = true, Some(log))
-    def lines_! : Stream[String]                    = lines(withInput = false, nonZeroException = false, None)
-    def lines_!(log: ProcessLogger): Stream[String] = lines(withInput = false, nonZeroException = false, Some(log))
+    def lineStream: Stream[String]                       = lineStream(withInput = false, nonZeroException = true, None)
+    def lineStream(log: ProcessLogger): Stream[String]   = lineStream(withInput = false, nonZeroException = true, Some(log))
+    def lineStream_! : Stream[String]                    = lineStream(withInput = false, nonZeroException = false, None)
+    def lineStream_!(log: ProcessLogger): Stream[String] = lineStream(withInput = false, nonZeroException = false, Some(log))
 
     def !                      = run(connectInput = false).exitValue()
     def !(io: ProcessIO)       = run(io).exitValue()
@@ -132,7 +132,7 @@ private[process] trait ProcessBuilderImpl {
       else scala.sys.error("Nonzero exit value: " + code)
     }
 
-    private[this] def lines(
+    private[this] def lineStream(
       withInput: Boolean,
       nonZeroException: Boolean,
       log: Option[ProcessLogger]

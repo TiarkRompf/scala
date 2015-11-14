@@ -49,6 +49,7 @@ object TreeSet extends ImmutableSortedSetFactory[TreeSet] {
  *  @define willNotTerminateInf
  */
 @SerialVersionUID(-5685982407650748405L)
+@deprecatedInheritance("The implementation details of immutable tree sets make inheriting from them unwise.", "2.11.0")
 class TreeSet[A] private (tree: RB.Tree[A, Unit])(implicit val ordering: Ordering[A])
   extends SortedSet[A] with SortedSetLike[A, TreeSet[A]] with Serializable {
 
@@ -86,8 +87,8 @@ class TreeSet[A] private (tree: RB.Tree[A, Unit])(implicit val ordering: Orderin
     else newSet(RB.slice(tree, from, until))
   }
 
-  override def dropRight(n: Int) = take(size - n)
-  override def takeRight(n: Int) = drop(size - n)
+  override def dropRight(n: Int) = take(size - math.max(n, 0))
+  override def takeRight(n: Int) = drop(size - math.max(n, 0))
   override def splitAt(n: Int) = (take(n), drop(n))
 
   private[this] def countWhile(p: A => Boolean): Int = {
@@ -96,9 +97,9 @@ class TreeSet[A] private (tree: RB.Tree[A, Unit])(implicit val ordering: Orderin
     while (it.hasNext && p(it.next())) result += 1
     result
   }
-  override def dropWhile(p: A => Boolean) = drop(countWhile(p))
-  override def takeWhile(p: A => Boolean) = take(countWhile(p))
-  override def span(p: A => Boolean) = splitAt(countWhile(p))
+  override def dropWhile(@plocal p: A => Boolean) = drop(countWhile(p))
+  override def takeWhile(@plocal p: A => Boolean) = take(countWhile(p))
+  override def span(@plocal p: A => Boolean) = splitAt(countWhile(p))
 
   def this()(implicit ordering: Ordering[A]) = this(null)(ordering)
 

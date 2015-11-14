@@ -17,16 +17,15 @@ import parallel.ParSet
 /** A template trait for sets.
  *
  *  $setNote
+ *    '''Implementation note:'''
+ *    This trait provides most of the operations of a `Set` independently of its representation.
+ *    It is typically inherited by concrete implementations of sets.
  *  $setTags
  *  @since 2.8
  *
  *  @define setNote
  *
  *  A set is a collection that contains no duplicate elements.
- *
- *    '''Implementation note:'''
- *    This trait provides most of the operations of a `Set` independently of its representation.
- *    It is typically inherited by concrete implementations of sets.
  *
  *    To implement a concrete set, you need to provide implementations of the
  *    following methods:
@@ -108,22 +107,36 @@ self =>
    */
   def + (elem: A): This
 
-  /** Creates a new $coll with additional elements.
+  /** Creates a new $coll with additional elements, omitting duplicates.
    *
-   *  This method takes two or more elements to be added. Another overloaded
-   *  variant of this method handles the case where a single element is added.
+   *  This method takes two or more elements to be added. Elements that already exist in the $coll will
+   *  not be added. Another overloaded variant of this method handles the case where a single element is added.
+   *
+   *  Example:
+   *   {{{
+   *    scala> val a = Set(1, 3) + 2 + 3
+   *    a: scala.collection.immutable.Set[Int] = Set(1, 3, 2)
+   *   }}}
    *
    *  @param elem1 the first element to add.
    *  @param elem2 the second element to add.
    *  @param elems the remaining elements to add.
-   *  @return   a new $coll with the given elements added.
+   *  @return   a new $coll with the given elements added, omitting duplicates.
    */
   def + (elem1: A, elem2: A, elems: A*): This = this + elem1 + elem2 ++ elems
 
-  /** Creates a new $coll by adding all elements contained in another collection to this $coll.
+  /** Creates a new $coll by adding all elements contained in another collection to this $coll, omitting duplicates.
    *
-   *  @param elems     the collection containing the added elements.
-   *  @return a new $coll with the given elements added.
+   * This method takes a collection of elements and adds all elements, omitting duplicates, into $coll.
+   *
+   * Example:
+   *  {{{
+   *    scala> val a = Set(1, 2) ++ Set(2, "a")
+   *    a: scala.collection.immutable.Set[Any] = Set(1, 2, a)
+   *  }}}
+   *
+   *  @param elems     the collection containing the elements to add.
+   *  @return a new $coll with the given elements added, omitting duplicates.
    */
   def ++ (elems: GenTraversableOnce[A]): This = (repr /: elems.seq)(_ + _)
 
@@ -172,7 +185,7 @@ self =>
    *
    *  @return     the iterator.
    */
-  def subsets: Iterator[This] = new AbstractIterator[This] {
+  def subsets(): Iterator[This] = new AbstractIterator[This] {
     private val elms = self.toIndexedSeq
     private var len = 0
     private var itr: Iterator[This] = Iterator.empty

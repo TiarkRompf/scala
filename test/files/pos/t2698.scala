@@ -1,4 +1,7 @@
-package scala.xml.dtd.impl
+class WordExp {
+  abstract class Label
+  type _labelT <: Label
+}
 
 import scala.collection._
 

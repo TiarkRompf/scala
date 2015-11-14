@@ -12,9 +12,10 @@ import scala.tools.nsc.io.AbstractFile
  *  This class should be used whenever file dependencies and recompile sets
  *  are managed automatically.
  */
-abstract class BrowsingLoaders extends SymbolLoaders {
-  import global._
+abstract class BrowsingLoaders extends GlobalSymbolLoaders {
+  val global: Global
 
+  import global._
   import syntaxAnalyzer.{OutlineParser, MalformedInput}
 
   /** In browse mode, it can happen that an encountered symbol is already
@@ -63,8 +64,10 @@ abstract class BrowsingLoaders extends SymbolLoaders {
           addPackagePrefix(pre)
           packagePrefix += ("." + name)
         case Ident(name) =>
-          if (packagePrefix.length != 0) packagePrefix += "."
-          packagePrefix += name
+          if (name != nme.EMPTY_PACKAGE_NAME) { // mirrors logic in Namers, see createPackageSymbol
+            if (packagePrefix.length != 0) packagePrefix += "."
+            packagePrefix += name
+          }
         case _ =>
           throw new MalformedInput(pkg.pos.point, "illegal tree node in package prefix: "+pkg)
       }

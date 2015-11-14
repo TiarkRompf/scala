@@ -61,8 +61,10 @@ import scala.reflect.ClassTag
 trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
   self =>
 
+  type LT
+
   /** Self-documenting abstract methods. */
-  def foreach[U](f: A => U): Unit
+  def foreach[U](@plocal f: A => U): Unit
   def isEmpty: Boolean
   def hasDefiniteSize: Boolean
 
@@ -75,7 +77,7 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
   //         at least indirectly. Currently, these are `ArrayOps` and `StringOps`.
   //         It is also implemented in `TraversableOnce[A]`.
   /** A version of this collection with all
-   *  of the operations implemented sequentially (i.e. in a single-threaded manner).
+   *  of the operations implemented sequentially (i.e., in a single-threaded manner).
    *
    *  This method returns a reference to this collection. In parallel collections,
    *  it is redefined to return a sequential implementation of this collection. In
@@ -85,19 +87,18 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    */
   def seq: TraversableOnce[A]
 
-  /** Presently these are abstract because the Traversable versions use
-   *  breakable/break, and I wasn't sure enough of how that's supposed to
-   *  function to consolidate them with the Iterator versions.
-   */
-  def forall(p: A => Boolean): Boolean
-  def exists(p: A => Boolean): Boolean
-  def find(p: A => Boolean): Option[A]
+  // Presently these are abstract because the Traversable versions use
+  // breakable/break, and I wasn't sure enough of how that's supposed to
+  // function to consolidate them with the Iterator versions.
+  def forall(@plocal p: A => Boolean): Boolean
+  def exists(@plocal p: A => Boolean): Boolean
+  def find(@plocal p: A => Boolean): Option[A]
   def copyToArray[B >: A](xs: Array[B], start: Int, len: Int): Unit
 
   // for internal use
   protected[this] def reversed = {
     var elems: List[A] = Nil
-    self.seq foreach (elems ::= _)
+    self foreach (elems ::= _)
     elems
   }
 
@@ -109,7 +110,7 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
 
   def nonEmpty: Boolean = !isEmpty
 
-  def count(p: A => Boolean): Int = {
+  def count(@plocal p: A => Boolean): Int = {
     var cnt = 0
     for (x <- this)
       if (p(x)) cnt += 1
@@ -128,23 +129,36 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    *              value for which it is defined, or `None` if none exists.
    *  @example    `Seq("a", 1, 5L).collectFirst({ case x: Int => x*10 }) = Some(10)`
    */
-  def collectFirst[B](pf: PartialFunction[A, B]): Option[B] = {
-    // make sure to use an iterator or `seq`
-    self.toIterator.foreach(pf.runWith(b => return Some(b)))
+  def collectFirst[B](@plocal pf: PartialFunction[A, B]): Option[B] = {
+    // TODO 2.12 -- move out alternate implementations into child classes
+    val i: Iterator[A] = self match {
+      case it: Iterator[A] => it
+      case _: GenIterable[_] => self.toIterator   // If it might be parallel, be sure to .seq or use iterator!
+      case _ =>                                   // Not parallel, not iterable--just traverse
+        self.foreach(pf.runWith(b => return Some(b)))
+        return None
+    }
+    // Presumably the fastest way to get in and out of a partial function is for a sentinel function to return itself
+    // (Tested to be lower-overhead than runWith.  Would be better yet to not need to (formally) allocate it--change in 2.12.)
+    val sentinel: Function1[A, Any] = new scala.runtime.AbstractFunction1[A, Any]{ def apply(a: A) = this }
+    while (i.hasNext) {
+      val x = pf.applyOrElse(i.next, sentinel)
+      if (x.asInstanceOf[AnyRef] ne sentinel) return Some(x.asInstanceOf[B])
+    }
     None
   }
 
-  def /:[B](z: B)(op: (B, A) => B): B = foldLeft(z)(op)
+  def /:[B](z: B)(@plocal op: (B, A) => B): B = foldLeft(z)(op)
 
-  def :\[B](z: B)(op: (A, B) => B): B = foldRight(z)(op)
+  def :\[B](z: B)(@plocal op: (A, B) => B): B = foldRight(z)(op)
 
-  def foldLeft[B](z: B)(op: (B, A) => B): B = {
+  def foldLeft[B](z: B)(@plocal op: (B, A) => B): B = {
     var result = z
-    this.seq foreach (x => result = op(result, x))
+    this foreach (x => result = op(result, x))
     result
   }
 
-  def foldRight[B](z: B)(op: (A, B) => B): B =
+  def foldRight[B](z: B)(@plocal op: (A, B) => B): B =
     reversed.foldLeft(z)((x, y) => op(y, x))
 
   /** Applies a binary operator to all elements of this $coll,
@@ -160,8 +174,8 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    *             op( op( ... op(x_1, x_2) ..., x_{n-1}), x_n)
    *           }}}
    *           where `x,,1,,, ..., x,,n,,` are the elements of this $coll.
-   *  @throws `UnsupportedOperationException` if this $coll is empty.   */
-  def reduceLeft[B >: A](op: (B, A) => B): B = {
+   *  @throws UnsupportedOperationException if this $coll is empty.   */
+  def reduceLeft[B >: A](@plocal op: (B, A) => B): B = {
     if (isEmpty)
       throw new UnsupportedOperationException("empty.reduceLeft")
 
@@ -178,26 +192,26 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
     acc
   }
 
-  def reduceRight[B >: A](op: (A, B) => B): B = {
+  def reduceRight[B >: A](@plocal op: (A, B) => B): B = {
     if (isEmpty)
       throw new UnsupportedOperationException("empty.reduceRight")
 
     reversed.reduceLeft[B]((x, y) => op(y, x))
   }
 
-  def reduceLeftOption[B >: A](op: (B, A) => B): Option[B] =
+  def reduceLeftOption[B >: A](@plocal op: (B, A) => B): Option[B] =
     if (isEmpty) None else Some(reduceLeft(op))
 
-  def reduceRightOption[B >: A](op: (A, B) => B): Option[B] =
+  def reduceRightOption[B >: A](@plocal op: (A, B) => B): Option[B] =
     if (isEmpty) None else Some(reduceRight(op))
 
-  def reduce[A1 >: A](op: (A1, A1) => A1): A1 = reduceLeft(op)
+  def reduce[A1 >: A](@plocal op: (A1, A1) => A1): A1 = reduceLeft(op)
 
-  def reduceOption[A1 >: A](op: (A1, A1) => A1): Option[A1] = reduceLeftOption(op)
+  def reduceOption[A1 >: A](@plocal op: (A1, A1) => A1): Option[A1] = reduceLeftOption(op)
 
-  def fold[A1 >: A](z: A1)(op: (A1, A1) => A1): A1 = foldLeft(z)(op)
+  def fold[A1 >: A](z: A1)(@plocal op: (A1, A1) => A1): A1 = foldLeft(z)(op)
 
-  def aggregate[B](z: =>B)(seqop: (B, A) => B, combop: (B, B) => B): B = foldLeft(z)(seqop)
+  def aggregate[B](z: =>B)(@plocal seqop: (B, A) => B, combop: (B, B) => B): B = foldLeft(z)(seqop)
 
   def sum[B >: A](implicit num: Numeric[B]): B = foldLeft(num.zero)(num.plus)
 
@@ -217,7 +231,7 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
     reduceLeft((x, y) => if (cmp.gteq(x, y)) x else y)
   }
 
-  def maxBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
+  def maxBy[B](@plocal f: A => B)(implicit cmp: Ordering[B]): A = {
     if (isEmpty)
       throw new UnsupportedOperationException("empty.maxBy")
 
@@ -235,14 +249,14 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
     }
     maxElem
   }
-  def minBy[B](f: A => B)(implicit cmp: Ordering[B]): A = {
+  def minBy[B](@plocal f: A => B)(implicit cmp: Ordering[B]): A = {
     if (isEmpty)
       throw new UnsupportedOperationException("empty.minBy")
 
     var minF: B = null.asInstanceOf[B]
     var minElem: A = null.asInstanceOf[A]
     var first = true
-    
+
     for (elem <- self) {
       val fx = f(elem)
       if (first || cmp.lt(fx, minF)) {
@@ -320,14 +334,14 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * Example:
    *
    * {{{
-   *      scala> val a = LinkedList(1,2,3,4)
-   *      a: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2, 3, 4)
-   *
+   *      scala> val a = List(1,2,3,4)
+   *      a: List[Int] = List(1, 2, 3, 4)
+   *      
    *      scala> val b = new StringBuilder()
-   *      b: StringBuilder =
-   *
-   *      scala> a.addString(b, "LinkedList(", ", ", ")")
-   *      res1: StringBuilder = LinkedList(1, 2, 3, 4)
+   *      b: StringBuilder = 
+   *      
+   *      scala> a.addString(b , "List(" , ", " , ")")
+   *      res5: StringBuilder = List(1, 2, 3, 4)
    * }}}
    *
    *  @param  b    the string builder to which elements are appended.
@@ -362,9 +376,9 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * Example:
    *
    * {{{
-   *      scala> val a = LinkedList(1,2,3,4)
-   *      a: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2, 3, 4)
-   *
+   *      scala> val a = List(1,2,3,4)
+   *      a: List[Int] = List(1, 2, 3, 4)
+   *      
    *      scala> val b = new StringBuilder()
    *      b: StringBuilder =
    *
@@ -385,14 +399,14 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * Example:
    *
    * {{{
-   *      scala> val a = LinkedList(1,2,3,4)
-   *      a: scala.collection.mutable.LinkedList[Int] = LinkedList(1, 2, 3, 4)
-   *
+   *      scala> val a = List(1,2,3,4)
+   *      a: List[Int] = List(1, 2, 3, 4)
+   *      
    *      scala> val b = new StringBuilder()
    *      b: StringBuilder =
    *
    *      scala> val h = a.addString(b)
-   *      b: StringBuilder = 1234
+   *      h: StringBuilder = 1234
    * }}}
 
    *  @param  b    the string builder to which elements are appended.

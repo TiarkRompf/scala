@@ -48,6 +48,7 @@ extends AbstractMap[A, B]
   initWithContents(contents)
 
   type Entry = DefaultEntry[A, B]
+  override protected type plocal = local[LT]
 
   override def empty: HashMap[A, B] = HashMap.empty[A, B]
   override def clear() { clearTable() }
@@ -133,15 +134,20 @@ extends AbstractMap[A, B]
   }
 
   private def writeObject(out: java.io.ObjectOutputStream) {
+  ESC.TRY{cc=>
     serializeTo(out, { entry =>
+      ESC.THROW{
       out.writeObject(entry.key)
       out.writeObject(entry.value)
-    })
-  }
+      }(cc)
+    })(cc)
+  }}
 
   private def readObject(in: java.io.ObjectInputStream) {
-    init(in, createNewEntry(in.readObject().asInstanceOf[A], in.readObject()))
-  }
+  ESC.TRY{cc=>
+    init(in,
+      ESC.THROW{createNewEntry(in.readObject().asInstanceOf[A], in.readObject())}(cc))(cc)
+  }}
 
 }
 

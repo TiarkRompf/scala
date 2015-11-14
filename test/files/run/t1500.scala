@@ -6,7 +6,7 @@ object Test {
    *  Type inference overlooks constraints posed by type parameters in annotations on types.
    */
   
-  val testCode = <code>
+  val testCode = """
   
     class posingAs[A] extends annotation.TypeConstraint
     
@@ -14,7 +14,7 @@ object Test {
     
     val x = resolve(7: @posingAs[Any])
   
-  </code>.text
+  """
   
   def main(args: Array[String]) {
     

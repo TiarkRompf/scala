@@ -22,13 +22,15 @@ class FscSettings(error: String => Unit) extends Settings(error) {
   val reset        = BooleanSetting("-reset",    "Reset compile server caches")
   val shutdown     = BooleanSetting("-shutdown", "Shutdown compile server")
   val server       = StringSetting ("-server",   "hostname:portnumber", "Specify compile server socket", "")
+  val port         = IntSetting    ("-port",     "Search and start compile server in given port only",
+  		                                      0, Some((0, Int.MaxValue)), (_: String) => None)
   val preferIPv4   = BooleanSetting("-ipv4",     "Use IPv4 rather than IPv6 for the server socket")
   val idleMins     = IntSetting    ("-max-idle", "Set idle timeout in minutes for fsc (use 0 for no timeout)",
                                               30, Some((0, Int.MaxValue)), (_: String) => None)
 
   // For improved help output, separating fsc options from the others.
   def fscSpecific = Set[Settings#Setting](
-    currentDir, reset, shutdown, server, preferIPv4, idleMins
+    currentDir, reset, shutdown, server, port, preferIPv4, idleMins
   )
   val isFscSpecific: String => Boolean = fscSpecific map (_.name)
 
@@ -44,7 +46,7 @@ class FscSettings(error: String => Unit) extends Settings(error) {
     // we need to ensure the files specified with relative locations are absolutized based on the currentDir
     (r, args map {a => absolutizePath(a)})
   }
-  
+
   /**
    * Take an individual path and if it's not absolute turns it into an absolute path based on currentDir.
    * If it's already absolute then it's left alone.

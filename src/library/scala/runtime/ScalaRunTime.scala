@@ -12,7 +12,7 @@ package runtime
 import scala.collection.{ Seq, IndexedSeq, TraversableView, AbstractIterator }
 import scala.collection.mutable.WrappedArray
 import scala.collection.immutable.{ StringLike, NumericRange, List, Stream, Nil, :: }
-import scala.collection.generic.{ Sorted }
+import scala.collection.generic.{ Sorted, IsTraversableLike }
 import scala.reflect.{ ClassTag, classTag }
 import scala.util.control.ControlThrowable
 import java.lang.{ Class => jClass }
@@ -32,21 +32,17 @@ object ScalaRunTime {
     clazz.isArray && (atLevel == 1 || isArrayClass(clazz.getComponentType, atLevel - 1))
 
   def isValueClass(clazz: jClass[_]) = clazz.isPrimitive()
-  def isTuple(x: Any) = x != null && tupleNames(x.getClass.getName)
+
+  // includes specialized subclasses and future proofed against hypothetical TupleN (for N > 22)
+  def isTuple(x: Any) = x != null && x.getClass.getName.startsWith("scala.Tuple")
   def isAnyVal(x: Any) = x match {
     case _: Byte | _: Short | _: Char | _: Int | _: Long | _: Float | _: Double | _: Boolean | _: Unit => true
     case _                                                                                             => false
   }
-  // Avoiding boxing which messes up the specialized tests.  Don't ask.
-  private val tupleNames = {
-    var i = 22
-    var names: List[String] = Nil
-    while (i >= 1) {
-      names ::= ("scala.Tuple" + String.valueOf(i))
-      i -= 1
-    }
-    names.toSet
-  }
+
+  // A helper method to make my life in the pattern matcher a lot easier.
+  def drop[Repr](coll: Repr, num: Int)(implicit traversable: IsTraversableLike[Repr]): Repr =
+    traversable conversion coll drop num
 
   /** Return the class object representing an array with element class `clazz`.
    */
@@ -66,40 +62,44 @@ object ScalaRunTime {
   }
 
   /** Return the class object representing an unboxed value type,
-   *  e.g. classOf[int], not classOf[java.lang.Integer].  The compiler
+   *  e.g., classOf[int], not classOf[java.lang.Integer].  The compiler
    *  rewrites expressions like 5.getClass to come here.
    */
   def anyValClass[T <: AnyVal : ClassTag](value: T): jClass[T] =
     classTag[T].runtimeClass.asInstanceOf[jClass[T]]
 
   /** Retrieve generic array element */
-  def array_apply(xs: AnyRef, idx: Int): Any = xs match {
-    case x: Array[AnyRef]  => x(idx).asInstanceOf[Any]
-    case x: Array[Int]     => x(idx).asInstanceOf[Any]
-    case x: Array[Double]  => x(idx).asInstanceOf[Any]
-    case x: Array[Long]    => x(idx).asInstanceOf[Any]
-    case x: Array[Float]   => x(idx).asInstanceOf[Any]
-    case x: Array[Char]    => x(idx).asInstanceOf[Any]
-    case x: Array[Byte]    => x(idx).asInstanceOf[Any]
-    case x: Array[Short]   => x(idx).asInstanceOf[Any]
-    case x: Array[Boolean] => x(idx).asInstanceOf[Any]
-    case x: Array[Unit]    => x(idx).asInstanceOf[Any]
-    case null => throw new NullPointerException
+  def array_apply(xs: AnyRef, idx: Int): Any = {
+    xs match {
+      case x: Array[AnyRef]  => x(idx).asInstanceOf[Any]
+      case x: Array[Int]     => x(idx).asInstanceOf[Any]
+      case x: Array[Double]  => x(idx).asInstanceOf[Any]
+      case x: Array[Long]    => x(idx).asInstanceOf[Any]
+      case x: Array[Float]   => x(idx).asInstanceOf[Any]
+      case x: Array[Char]    => x(idx).asInstanceOf[Any]
+      case x: Array[Byte]    => x(idx).asInstanceOf[Any]
+      case x: Array[Short]   => x(idx).asInstanceOf[Any]
+      case x: Array[Boolean] => x(idx).asInstanceOf[Any]
+      case x: Array[Unit]    => x(idx).asInstanceOf[Any]
+      case null => throw new NullPointerException
+    }
   }
 
   /** update generic array element */
-  def array_update(xs: AnyRef, idx: Int, value: Any): Unit = xs match {
-    case x: Array[AnyRef]  => x(idx) = value.asInstanceOf[AnyRef]
-    case x: Array[Int]     => x(idx) = value.asInstanceOf[Int]
-    case x: Array[Double]  => x(idx) = value.asInstanceOf[Double]
-    case x: Array[Long]    => x(idx) = value.asInstanceOf[Long]
-    case x: Array[Float]   => x(idx) = value.asInstanceOf[Float]
-    case x: Array[Char]    => x(idx) = value.asInstanceOf[Char]
-    case x: Array[Byte]    => x(idx) = value.asInstanceOf[Byte]
-    case x: Array[Short]   => x(idx) = value.asInstanceOf[Short]
-    case x: Array[Boolean] => x(idx) = value.asInstanceOf[Boolean]
-    case x: Array[Unit]    => x(idx) = value.asInstanceOf[Unit]
-    case null => throw new NullPointerException
+  def array_update(xs: AnyRef, idx: Int, value: Any): Unit = {
+    xs match {
+      case x: Array[AnyRef]  => x(idx) = value.asInstanceOf[AnyRef]
+      case x: Array[Int]     => x(idx) = value.asInstanceOf[Int]
+      case x: Array[Double]  => x(idx) = value.asInstanceOf[Double]
+      case x: Array[Long]    => x(idx) = value.asInstanceOf[Long]
+      case x: Array[Float]   => x(idx) = value.asInstanceOf[Float]
+      case x: Array[Char]    => x(idx) = value.asInstanceOf[Char]
+      case x: Array[Byte]    => x(idx) = value.asInstanceOf[Byte]
+      case x: Array[Short]   => x(idx) = value.asInstanceOf[Short]
+      case x: Array[Boolean] => x(idx) = value.asInstanceOf[Boolean]
+      case x: Array[Unit]    => x(idx) = value.asInstanceOf[Unit]
+      case null => throw new NullPointerException
+    }
   }
 
   /** Get generic array length */
@@ -251,7 +251,7 @@ object ScalaRunTime {
    *
    * The primary motivation for this method is to provide a means for
    * correctly obtaining a String representation of a value, while
-   * avoiding the pitfalls of naïvely calling toString on said value.
+   * avoiding the pitfalls of naively calling toString on said value.
    * In particular, it addresses the fact that (a) toString cannot be
    * called on null and (b) depending on the apparent type of an
    * array, toString may or may not print it in a human-readable form.
@@ -267,7 +267,18 @@ object ScalaRunTime {
     }
     def isScalaClass(x: AnyRef)         = packageOf(x) startsWith "scala."
     def isScalaCompilerClass(x: AnyRef) = packageOf(x) startsWith "scala.tools.nsc."
-    def isXmlClass(x: AnyRef)           = packageOf(x) startsWith "scala.xml."
+
+    // We use reflection because the scala.xml package might not be available
+    def isSubClassOf(potentialSubClass: Class[_], ofClass: String) =
+      try {
+        val classLoader = potentialSubClass.getClassLoader
+        val clazz = Class.forName(ofClass, /*initialize =*/ false, classLoader)
+        clazz.isAssignableFrom(potentialSubClass)
+      } catch {
+        case cnfe: ClassNotFoundException => false
+      }
+    def isXmlNode(potentialSubClass: Class[_])     = isSubClassOf(potentialSubClass, "scala.xml.Node")
+    def isXmlMetaData(potentialSubClass: Class[_]) = isSubClassOf(potentialSubClass, "scala.xml.MetaData")
 
     // When doing our own iteration is dangerous
     def useOwnToString(x: Any) = x match {
@@ -279,11 +290,12 @@ object ScalaRunTime {
       case _: StringLike[_] => true
       // Don't want to evaluate any elements in a view
       case _: TraversableView[_, _] => true
-      // Node extends NodeSeq extends Seq[Node] and MetaData extends Iterable[MetaData] -> catch those and more by isXmlClass(x)
+      // Node extends NodeSeq extends Seq[Node] and MetaData extends Iterable[MetaData]
+      // -> catch those by isXmlNode and isXmlMetaData.
       // Don't want to a) traverse infinity or b) be overly helpful with peoples' custom
       // collections which may have useful toString methods - ticket #3710
       // or c) print AbstractFiles which are somehow also Iterable[AbstractFile]s.
-      case x: Traversable[_] => !x.hasDefiniteSize || !isScalaClass(x) || isScalaCompilerClass(x) || isXmlClass(x)
+      case x: Traversable[_] => !x.hasDefiniteSize || !isScalaClass(x) || isScalaCompilerClass(x) || isXmlNode(x.getClass) || isXmlMetaData(x.getClass)
       // Otherwise, nothing could possibly go wrong
       case _ => false
     }
@@ -324,7 +336,7 @@ object ScalaRunTime {
     // to be iterated, such as some scala.tools.nsc.io.AbstractFile derived classes.
     try inner(arg)
     catch {
-      case _: StackOverflowError | _: UnsupportedOperationException | _: AssertionError => "" + arg
+      case _: UnsupportedOperationException | _: AssertionError => "" + arg
     }
   }
 
@@ -334,20 +346,6 @@ object ScalaRunTime {
     val nl = if (s contains "\n") "\n" else ""
 
     nl + s + "\n"
-  }
-  private[scala] def checkZip(what: String, coll1: TraversableOnce[_], coll2: TraversableOnce[_]) {
-    if (sys.props contains "scala.debug.zip") {
-      val xs = coll1.toIndexedSeq
-      val ys = coll2.toIndexedSeq
-      if (xs.length != ys.length) {
-        Console.err.println(
-          "Mismatched zip in " + what + ":\n" +
-          "  this: " + xs.mkString(", ") + "\n" +
-          "  that: " + ys.mkString(", ")
-        )
-        (new Exception).getStackTrace.drop(2).take(10).foreach(println)
-      }
-    }
   }
 
   def box[T](clazz: jClass[T]): jClass[_] = clazz match {

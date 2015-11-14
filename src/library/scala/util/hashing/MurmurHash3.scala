@@ -191,7 +191,7 @@ private[hashing] class MurmurHash3 {
  * This is based on the earlier MurmurHash3 code by Rex Kerr, but the
  * MurmurHash3 algorithm was since changed by its creator Austin Appleby
  * to remedy some weaknesses and improve performance. This represents the
- * latest and supposedly final version of the algortihm (revision 136).
+ * latest and supposedly final version of the algorithm (revision 136).
  *
  * @see [[http://code.google.com/p/smhasher]]
  */
@@ -275,12 +275,4 @@ object MurmurHash3 extends MurmurHash3 {
     finalizeHash(h, n)
   }
   */
-
-  @deprecated("Use unorderedHash", "2.10.0")
-  final def symmetricHash[T](xs: scala.collection.GenTraversableOnce[T], seed: Int = symmetricSeed): Int =
-    unorderedHash(xs.seq, seed)
-
-  @deprecated("Use orderedHash", "2.10.0")
-  final def traversableHash[T](xs: scala.collection.GenTraversableOnce[T], seed: Int = traversableSeed): Int =
-    orderedHash(xs.seq, seed)
 }

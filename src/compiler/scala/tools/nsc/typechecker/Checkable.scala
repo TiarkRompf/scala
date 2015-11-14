@@ -11,12 +11,28 @@ import scala.language.postfixOps
 
 /** On pattern matcher checkability:
  *
+ *  The spec says that case _: List[Int] should be always issue
+ *  an unchecked warning:
+ *
+ *  > Types which are not of one of the forms described above are
+ *  > also accepted as type patterns. However, such type patterns
+ *  > will be translated to their erasure (§3.7). The Scala compiler
+ *  > will issue an “unchecked” warning for these patterns to flag
+ *  > the possible loss of type-safety.
+ *
+ *  But the implementation goes a little further to omit warnings
+ *  based on the static type of the scrutinee. As a trivial example:
+ *
+ *    def foo(s: Seq[Int]) = s match { case _: List[Int] => }
+ *
+ *  need not issue this warning.
+ *
  *  Consider a pattern match of this form: (x: X) match { case _: P => }
  *
  *  There are four possibilities to consider:
  *     [P1] X will always conform to P
  *     [P2] x will never conform to P
- *     [P3] X <: P if some runtime test is true
+ *     [P3] X will conform to P if some runtime test is true
  *     [P4] X cannot be checked against P
  *
  *  The first two cases correspond to those when there is enough
@@ -27,6 +43,11 @@ import scala.language.postfixOps
  *  The third case is the interesting one.  We designate another type, XR,
  *  which is essentially the intersection of X and |P|, where |P| is
  *  the erasure of P.  If XR <: P, then no warning is emitted.
+ *
+ *  We evaluate "X with conform to P" by checking `X <: P_wild, where
+ *  P_wild is the result of substituting wildcard types in place of
+ *  pattern type variables. This is intentionally stricter than
+ *  (X matchesPattern P), see SI-8597 for motivating test cases.
  *
  *  Examples of how this info is put to use:
  *  sealed trait A[T] ; class B[T] extends A[T]
@@ -100,7 +121,7 @@ trait Checkable {
   private def typeArgsInTopLevelType(tp: Type): List[Type] = {
     val tps = tp match {
       case RefinedType(parents, _)              => parents flatMap typeArgsInTopLevelType
-      case TypeRef(_, ArrayClass, arg :: Nil)   => typeArgsInTopLevelType(arg)
+      case TypeRef(_, ArrayClass, arg :: Nil)   => if (arg.typeSymbol.isAbstractType) arg :: Nil else typeArgsInTopLevelType(arg)
       case TypeRef(pre, sym, args)              => typeArgsInTopLevelType(pre) ++ args
       case ExistentialType(tparams, underlying) => tparams.map(_.tpe) ++ typeArgsInTopLevelType(underlying)
       case _                                    => Nil
@@ -108,14 +129,31 @@ trait Checkable {
     tps filterNot isUnwarnableTypeArg
   }
 
+  private def scrutConformsToPatternType(scrut: Type, pattTp: Type): Boolean = {
+    def typeVarToWildcard(tp: Type) = {
+      // The need for typeSymbolDirect is demonstrated in neg/t8597b.scala
+      if (tp.typeSymbolDirect.isPatternTypeVariable) WildcardType else tp
+    }
+    val pattTpWild = pattTp.map(typeVarToWildcard)
+    scrut <:< pattTpWild
+  }
+
   private class CheckabilityChecker(val X: Type, val P: Type) {
     def Xsym = X.typeSymbol
     def Psym = P.typeSymbol
-    def XR   = if (Xsym == AnyClass) classExistentialType(Psym) else propagateKnownTypes(X, Psym)
+    def PErased = {
+      P match {
+        case erasure.GenericArray(n, core) => existentialAbstraction(core.typeSymbol :: Nil, P)
+        case _ => existentialAbstraction(Psym.typeParams, Psym.tpe_*)
+      }
+    }
+    def XR   = if (Xsym == AnyClass) PErased else propagateKnownTypes(X, Psym)
+
+
     // sadly the spec says (new java.lang.Boolean(true)).isInstanceOf[scala.Boolean]
-    def P1   = X matchesPattern P
+    def P1   = scrutConformsToPatternType(X, P)
     def P2   = !Psym.isPrimitiveValueClass && isNeverSubType(X, P)
-    def P3   = isNonRefinementClassType(P) && (XR matchesPattern P)
+    def P3   = isNonRefinementClassType(P) && scrutConformsToPatternType(XR, P)
     def P4   = !(P1 || P2 || P3)
 
     def summaryString = f"""
@@ -186,7 +224,7 @@ trait Checkable {
      *  additional conditions holds:
      *   - either A or B is effectively final
      *   - neither A nor B is a trait (i.e. both are actual classes, not eligible for mixin)
-     *   - both A and B are sealed, and every possible pairing of their children is irreconcilable
+     *   - both A and B are sealed/final, and every possible pairing of their children is irreconcilable
      *
      *  TODO: the last two conditions of the last possibility (that the symbols are not of
      *  classes being compiled in the current run) are because this currently runs too early,
@@ -198,11 +236,12 @@ trait Checkable {
          isEffectivelyFinal(sym1) // initialization important
       || isEffectivelyFinal(sym2)
       || !sym1.isTrait && !sym2.isTrait
-      || sym1.isSealed && sym2.isSealed && allChildrenAreIrreconcilable(sym1, sym2) && !currentRun.compiles(sym1) && !currentRun.compiles(sym2)
+      || isSealedOrFinal(sym1) && isSealedOrFinal(sym2) && allChildrenAreIrreconcilable(sym1, sym2) && !currentRun.compiles(sym1) && !currentRun.compiles(sym2)
     )
+    private def isSealedOrFinal(sym: Symbol) = sym.isSealed || sym.isFinal
     private def isEffectivelyFinal(sym: Symbol): Boolean = (
       // initialization important
-      sym.initialize.isEffectivelyFinal || (
+      sym.initialize.isEffectivelyFinalOrNotOverridden || (
         settings.future && isTupleSymbol(sym) // SI-7294 step into the future and treat TupleN as final.
       )
     )
@@ -246,8 +285,8 @@ trait Checkable {
       uncheckedOk(P0) || (P0.widen match {
         case TypeRef(_, NothingClass | NullClass | AnyValClass, _) => false
         case RefinedType(_, decls) if !decls.isEmpty               => false
-        case p                                                     =>
-          new CheckabilityChecker(AnyTpe, p) isCheckable
+        case RefinedType(parents, _)                               => parents forall isCheckable
+        case p                                                     => new CheckabilityChecker(AnyTpe, p) isCheckable
       })
     )
 
@@ -259,9 +298,11 @@ trait Checkable {
       if (uncheckedOk(P0)) return
       def where = if (inPattern) "pattern " else ""
 
-      // singleton types not considered here
-      val P = P0.widen
+      // singleton types not considered here, dealias the pattern for SI-XXXX
+      val P = P0.dealiasWiden
       val X = X0.widen
+
+      def PString = if (P eq P0) P.toString else s"$P (the underlying of $P0)"
 
       P match {
         // Prohibit top-level type tests for these, but they are ok nested (e.g. case Foldable[Nothing] => ... )
@@ -272,20 +313,24 @@ trait Checkable {
           ;
         // Matching on types like case _: AnyRef { def bippy: Int } => doesn't work -- yet.
         case RefinedType(_, decls) if !decls.isEmpty =>
-          getContext.unit.warning(tree.pos, s"a pattern match on a refinement type is unchecked")
+          reporter.warning(tree.pos, s"a pattern match on a refinement type is unchecked")
+        case RefinedType(parents, _) =>
+          parents foreach (p => checkCheckable(tree, p, X, inPattern, canRemedy))
         case _ =>
           val checker = new CheckabilityChecker(X, P)
-          log(checker.summaryString)
+          if (checker.result == RuntimeCheckable)
+            log(checker.summaryString)
+
           if (checker.neverMatches) {
             val addendum = if (checker.neverSubClass) "" else " (but still might match its erasure)"
-            getContext.unit.warning(tree.pos, s"fruitless type test: a value of type $X cannot also be a $P$addendum")
+            reporter.warning(tree.pos, s"fruitless type test: a value of type $X cannot also be a $PString$addendum")
           }
           else if (checker.isUncheckable) {
             val msg = (
-              if (checker.uncheckableType =:= P) s"abstract type $where$P"
-              else s"${checker.uncheckableMessage} in type $where$P"
+              if (checker.uncheckableType =:= P) s"abstract type $where$PString"
+              else s"${checker.uncheckableMessage} in type $where$PString"
             )
-            getContext.unit.warning(tree.pos, s"$msg is unchecked since it is eliminated by erasure")
+            reporter.warning(tree.pos, s"$msg is unchecked since it is eliminated by erasure")
           }
       }
     }

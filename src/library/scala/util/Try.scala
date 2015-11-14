@@ -24,11 +24,12 @@ import scala.language.implicitConversions
  *
  * Example:
  * {{{
+ *   import scala.io.StdIn
  *   import scala.util.{Try, Success, Failure}
  *
  *   def divide: Try[Int] = {
- *     val dividend = Try(Console.readLine("Enter an Int that you'd like to divide:\n").toInt)
- *     val divisor = Try(Console.readLine("Enter an Int that you'd like to divide by:\n").toInt)
+ *     val dividend = Try(StdIn.readLine("Enter an Int that you'd like to divide:\n").toInt)
+ *     val divisor = Try(StdIn.readLine("Enter an Int that you'd like to divide by:\n").toInt)
  *     val problem = dividend.flatMap(x => divisor.map(y => x/y))
  *     problem match {
  *       case Success(v) =>
@@ -47,7 +48,7 @@ import scala.language.implicitConversions
  * catching exceptions along the way. The `flatMap` and `map` combinators in the above example each essentially
  * pass off either their successfully completed value, wrapped in the `Success` type for it to be further operated
  * upon by the next combinator in the chain, or the exception wrapped in the `Failure` type usually to be simply
- * passed on down the chain. Combinators such as `rescue` and `recover` are designed to provide some type of
+ * passed on down the chain. Combinators such as `recover` and `recoverWith` are designed to provide some type of
  * default behavior in the case of failure.
  *
  * ''Note'': only non-fatal exceptions are caught by the combinators on `Try` (see [[scala.util.control.NonFatal]]).
@@ -111,6 +112,35 @@ sealed abstract class Try[+T] {
    */
   def filter(p: T => Boolean): Try[T]
 
+  /** Creates a non-strict filter, which eventually converts this to a `Failure`
+   *  if the predicate is not satisfied.
+   *
+   *  Note: unlike filter, withFilter does not create a new Try.
+   *        Instead, it restricts the domain of subsequent
+   *        `map`, `flatMap`, `foreach`, and `withFilter` operations.
+   *
+   * As Try is a one-element collection, this may be a bit overkill,
+   * but it's consistent with withFilter on Option and the other collections.
+   *
+   *  @param p   the predicate used to test elements.
+   *  @return    an object of class `WithFilter`, which supports
+   *             `map`, `flatMap`, `foreach`, and `withFilter` operations.
+   *             All these operations apply to those elements of this Try
+   *             which satisfy the predicate `p`.
+   */
+  @inline final def withFilter(p: T => Boolean): WithFilter = new WithFilter(p)
+
+  /** We need a whole WithFilter class to honor the "doesn't create a new
+   *  collection" contract even though it seems unlikely to matter much in a
+   *  collection with max size 1.
+   */
+  class WithFilter(p: T => Boolean) {
+    def map[U](f:     T => U): Try[U]           = Try.this filter p map f
+    def flatMap[U](f: T => Try[U]): Try[U]      = Try.this filter p flatMap f
+    def foreach[U](f: T => U): Unit             = Try.this filter p foreach f
+    def withFilter(q: T => Boolean): WithFilter = new WithFilter(x => p(x) && q(x))
+  }
+
   /**
    * Applies the given function `f` if this is a `Failure`, otherwise returns this if this is a `Success`.
    * This is like `flatMap` for the exception.
@@ -135,8 +165,8 @@ sealed abstract class Try[+T] {
   def flatten[U](implicit ev: T <:< Try[U]): Try[U]
 
   /**
-   * Completes this `Try` with an exception wrapped in a `Success`. The exception is either the exception that the
-   * `Try` failed with (if a `Failure`) or an `UnsupportedOperationException`.
+   * Inverts this `Try`. If this is a `Failure`, returns its exception wrapped in a `Success`.
+   * If this is a `Success`, returns a `Failure` containing an `UnsupportedOperationException`.
    */
   def failed: Try[Throwable]
 

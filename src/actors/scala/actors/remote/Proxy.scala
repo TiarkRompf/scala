@@ -84,7 +84,7 @@ private[remote] class Proxy(node: Node, name: Symbol, @transient var kernel: Net
 }
 
 // Proxy is private[remote], but these classes are public and use it in a public
-// method signature.  That makes the only method they have non-overriddable.
+// method signature.  That makes the only method they have non-overridable.
 // So I made them final, which seems appropriate anyway.
 
 final class LinkToFun extends Function2[AbstractActor, Proxy, Unit] with Serializable {
@@ -118,7 +118,7 @@ private[remote] case class Apply0(rfun: Function2[AbstractActor, Proxy, Unit])
  */
 private[remote] class DelegateActor(creator: Proxy, node: Node, name: Symbol, kernel: NetKernel) extends Actor {
   var channelMap = new mutable.HashMap[Symbol, OutputChannel[Any]]
-  var sessionMap = new mutable.HashMap[OutputChannel[Any], Symbol]
+  var sessionMap = new mutable.HashMap[OutputChannel[_], Symbol]
 
   def act() {
     Actor.loop {
@@ -142,7 +142,7 @@ private[remote] class DelegateActor(creator: Proxy, node: Node, name: Symbol, ke
                 // create a new reply channel...
                 val replyCh = new Channel[Any](this)
                 // ...that maps to session
-                sessionMap += Pair(replyCh, session)
+                sessionMap(replyCh) = session
                 // local send
                 out.send(msg, replyCh)
 
@@ -178,7 +178,7 @@ private[remote] class DelegateActor(creator: Proxy, node: Node, name: Symbol, ke
             // create fresh session ID...
             val fresh = FreshNameCreator.newName(node+"@"+name)
             // ...that maps to reply channel
-            channelMap += Pair(fresh, sender)
+            channelMap(fresh) = sender
             kernel.forward(sender, node, name, msg, fresh)
           } else {
             kernel.forward(sender, node, name, msg, 'nosession)

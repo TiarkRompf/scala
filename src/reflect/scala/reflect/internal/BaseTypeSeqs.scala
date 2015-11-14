@@ -38,7 +38,7 @@ trait BaseTypeSeqs {
    *  This is necessary because when run from reflection every base type sequence needs to have a
    *  SynchronizedBaseTypeSeq as mixin.
    */
-  class BaseTypeSeq protected[BaseTypeSeqs] (private[BaseTypeSeqs] val parents: List[Type], private[BaseTypeSeqs] val elems: Array[Type]) {
+  class BaseTypeSeq protected[reflect] (private[BaseTypeSeqs] val parents: List[Type], private[BaseTypeSeqs] val elems: Array[Type]) {
   self =>
     if (Statistics.canEnable) Statistics.incCounter(baseTypeSeqCount)
     if (Statistics.canEnable) Statistics.incCounter(baseTypeSeqLenTotal, elems.length)
@@ -130,9 +130,9 @@ trait BaseTypeSeqs {
 
     lazy val maxDepth = maxDepthOfElems
 
-    protected def maxDepthOfElems: Int = {
-      var d = 0
-      for (i <- 1 until length) d = max(d, typeDepth(elems(i)))
+    protected def maxDepthOfElems: Depth = {
+      var d = Depth.Zero
+      1 until length foreach (i => d = d max typeDepth(elems(i)))
       d
     }
 
@@ -144,7 +144,7 @@ trait BaseTypeSeqs {
         "\n --- because ---\n"+msg)
   }
 
-  /** A merker object for a base type sequence that's no yet computed.
+  /** A marker object for a base type sequence that's no yet computed.
    *  used to catch inheritance cycles
    */
   val undetBaseTypeSeq: BaseTypeSeq = newBaseTypeSeq(List(), Array())
@@ -152,7 +152,7 @@ trait BaseTypeSeqs {
   /** Create a base type sequence consisting of a single type */
   def baseTypeSingletonSeq(tp: Type): BaseTypeSeq = newBaseTypeSeq(List(), Array(tp))
 
-  /** Create the base type sequence of a compound type wuth given tp.parents */
+  /** Create the base type sequence of a compound type with given tp.parents */
   def compoundBaseTypeSeq(tp: Type): BaseTypeSeq = {
     val tsym = tp.typeSymbol
     val parents = tp.parents
@@ -166,9 +166,10 @@ trait BaseTypeSeqs {
       val index = new Array[Int](nparents)
       var i = 0
       for (p <- parents) {
+        val parentBts = p.dealias.baseTypeSeq // dealias need for SI-8046.
         pbtss(i) =
-          if (p.baseTypeSeq eq undetBaseTypeSeq) AnyClass.info.baseTypeSeq
-          else p.baseTypeSeq
+          if (parentBts eq undetBaseTypeSeq) AnyClass.info.baseTypeSeq
+          else parentBts
         index(i) = 0
         i += 1
       }
@@ -234,7 +235,7 @@ trait BaseTypeSeqs {
     override def map(g: Type => Type) = lateMap(g)
     override def lateMap(g: Type => Type) = orig.lateMap(x => g(f(x)))
     override def exists(p: Type => Boolean) = elems exists (x => p(f(x)))
-    override protected def maxDepthOfElems: Int = elems.map(x => typeDepth(f(x))).max
+    override protected def maxDepthOfElems: Depth = elems.map(x => typeDepth(f(x))).max
     override def toString = elems.mkString("MBTS(", ",", ")")
   }
 

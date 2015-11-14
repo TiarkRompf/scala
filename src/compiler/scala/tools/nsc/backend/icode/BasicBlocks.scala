@@ -300,14 +300,16 @@ trait BasicBlocks {
       if (!closed)
         instructionList = instructionList map (x => map.getOrElse(x, x))
       else
-        instrs.zipWithIndex collect {
-          case (oldInstr, i) if map contains oldInstr =>
-            // SI-6288 clone important here because `replaceInstruction` assigns
-            // a position to `newInstr`. Without this, a single instruction can
-            // be added twice, and the position last position assigned clobbers
-            // all previous positions in other usages.
-            val newInstr = map(oldInstr).clone()
-            code.touched |= replaceInstruction(i, newInstr)
+        instrs.iterator.zipWithIndex foreach {
+          case (oldInstr, i) =>
+            if (map contains oldInstr) {
+              // SI-6288 clone important here because `replaceInstruction` assigns
+              // a position to `newInstr`. Without this, a single instruction can
+              // be added twice, and the position last position assigned clobbers
+              // all previous positions in other usages.
+              val newInstr = map(oldInstr).clone()
+              code.touched |= replaceInstruction(i, newInstr)
+            }
         }
 
     ////////////////////// Emit //////////////////////
@@ -451,10 +453,6 @@ trait BasicBlocks {
     def lastInstruction =
       if (closed) instrs(instrs.length - 1)
       else instructionList.head
-
-    def firstInstruction =
-      if (closed) instrs(0)
-      else instructionList.last
 
     def exceptionSuccessors: List[BasicBlock] =
       exceptionSuccessorsForBlock(this)

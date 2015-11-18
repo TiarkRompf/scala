@@ -17,4 +17,4 @@ package collection
  *  @since   2.8
  */
 @deprecated("Proxying is deprecated due to lack of use and compiler-level support.", "2.11.3")
-trait IterableProxy[+A] extends Iterable[A] with IterableProxyLike[A, Iterable[A]]
+trait IterableProxy[+A] extends Iterable[Any, A] with IterableProxyLike[A, Iterable[Any, A]]

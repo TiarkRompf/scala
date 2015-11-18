@@ -20,14 +20,14 @@ import generic._
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
-trait GenSeq[+A]
-extends GenSeqLike[A, GenSeq[A]]
-   with GenIterable[A]
+trait GenSeq[-L, +A]
+extends GenSeqLike[L, A, GenSeq[L, A]]
+   with GenIterable[L, A]
    with Equals
-   with GenericTraversableTemplate[A, GenSeq]
+   with GenericTraversableTemplate[L, A, GenSeq]
 {
-  def seq: Seq[A]
-  override def companion: GenericCompanion[GenSeq] = GenSeq
+  def seq: Seq[L, A]
+  override def companion: GenericCompanion[L, GenSeq] = GenSeq
 }
 
 

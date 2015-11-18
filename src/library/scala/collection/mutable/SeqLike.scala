@@ -12,13 +12,13 @@ package mutable
 
 import parallel.mutable.ParSeq
 
-/** A template trait for mutable sequences of type `mutable.Seq[A]`.
+/** A template trait for mutable sequences of type `mutable.Seq[L, A]`.
  *  @tparam A    the type of the elements of the set
  *  @tparam This the type of the set itself.
  *
  */
-trait SeqLike[A, +This <: SeqLike[A, This] with Seq[A]]
-  extends scala.collection.SeqLike[A, This]
+trait SeqLike[-L, A, +This <: SeqLike[L, A, This] with Seq[L, A]]
+  extends scala.collection.SeqLike[L, A, This]
      with Cloneable[This]
      with Parallelizable[A, ParSeq[A]]
 {

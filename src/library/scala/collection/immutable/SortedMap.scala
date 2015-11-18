@@ -77,7 +77,7 @@ self =>
    *
    *  @param xs     the traversable object.
    */
-  override def ++[B1 >: B](xs: GenTraversableOnce[(A, B1)]): SortedMap[A, B1] =
+  override def ++[B1 >: B](xs: GenTraversableOnce[Any, (A, B1)]): SortedMap[A, B1] =
     ((repr: SortedMap[A, B1]) /: xs.seq) (_ + _)
 
   override def filterKeys(p: A => Boolean): SortedMap[A, B] = new FilteredKeys(p) with SortedMap.Default[A, B] {

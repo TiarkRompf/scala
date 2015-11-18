@@ -105,7 +105,7 @@ extends AbstractMap[A, B]
   }
 
   /* Override to avoid tuple allocation in foreach */
-  override def values: scala.collection.Iterable[B] = new DefaultValuesIterable {
+  override def values: scala.collection.Iterable[Any, B] = new DefaultValuesIterable {
     override def foreach[C](f: B => C) = foreachEntry(e => f(e.value))
   }
 

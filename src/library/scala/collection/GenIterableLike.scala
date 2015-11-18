@@ -35,7 +35,7 @@ import generic.{ CanBuildFrom => CBF }
  *    This is a base trait for all Scala collections that define an `iterator`
  *    method to step through one-by-one the collection's elements.
  */
-trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
+trait GenIterableLike[-L, +A, +Repr] extends Any with GenTraversableLike[L, A, Repr] {
 
   def iterator: Iterator[A]
 
@@ -45,7 +45,7 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *  @tparam A1   the type of the elements of collection `that`.
    *  @return `true`, if both collections contain the same elements in the same order, `false` otherwise.
    *
-   *  @usecase  def sameElements(that: GenIterable[A]): Boolean
+   *  @usecase  def sameElements(that: GenIterable[L, A]): Boolean
    *    @inheritdoc
    *
    *    $orderDependent
@@ -54,7 +54,7 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *    @param that  the collection to compare with.
    *    @return `true`, if both collections contain the same elements in the same order, `false` otherwise.
    */
-  def sameElements[A1 >: A](that: GenIterable[A1]): Boolean
+  def sameElements[A1 >: A](that: GenIterable[L, A1]): Boolean
 
   /** Returns a $coll formed from this $coll and another iterable collection
    *  by combining corresponding elements in pairs.
@@ -70,7 +70,7 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *                 corresponding elements of this $coll and `that`. The length
    *                 of the returned collection is the minimum of the lengths of this $coll and `that`.
    *
-   *  @usecase def zip[B](that: GenIterable[B]): $Coll[(A, B)]
+   *  @usecase def zip[B](that: GenIterable[L, B]): $Coll[(A, B)]
    *    @inheritdoc
    *
    *    $orderDependent
@@ -81,7 +81,7 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *                   corresponding elements of this $coll and `that`. The length
    *                   of the returned collection is the minimum of the lengths of this $coll and `that`.
    */
-  def zip[A1 >: A, B, That](that: GenIterable[B])(implicit bf: CBF[Repr, (A1, B), That]): That
+  def zip[A1 >: A, B, That](that: GenIterable[L, B])(implicit bf: CBF[Repr, (A1, B), That]): That
 
   /** Zips this $coll with its indices.
    *
@@ -125,7 +125,7 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *                 If this $coll is shorter than `that`, `thisElem` values are used to pad the result.
    *                 If `that` is shorter than this $coll, `thatElem` values are used to pad the result.
    *
-   *  @usecase def zipAll[B](that: Iterable[B], thisElem: A, thatElem: B): $Coll[(A, B)]
+   *  @usecase def zipAll[B](that: Iterable[L, B], thisElem: A, thatElem: B): $Coll[(A, B)]
    *    @inheritdoc
    *
    *    $orderDependent
@@ -140,6 +140,6 @@ trait GenIterableLike[+A, +Repr] extends Any with GenTraversableLike[A, Repr] {
    *                   If this $coll is shorter than `that`, `thisElem` values are used to pad the result.
    *                   If `that` is shorter than this $coll, `thatElem` values are used to pad the result.
    */
-  def zipAll[B, A1 >: A, That](that: GenIterable[B], thisElem: A1, thatElem: B)(implicit bf: CBF[Repr, (A1, B), That]): That
+  def zipAll[B, A1 >: A, That](that: GenIterable[L, B], thisElem: A1, thatElem: B)(implicit bf: CBF[Repr, (A1, B), That]): That
 
 }

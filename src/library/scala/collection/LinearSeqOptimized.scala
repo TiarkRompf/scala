@@ -13,7 +13,7 @@ import mutable.ListBuffer
 import immutable.List
 import scala.annotation.tailrec
 
-/** A template trait for linear sequences of type `LinearSeq[A]` which optimizes
+/** A template trait for linear sequences of type `LinearSeq[L, A]` which optimizes
  *  the implementation of various methods under the assumption of fast linear access.
  *
  *  $linearSeqOptim
@@ -32,7 +32,7 @@ import scala.annotation.tailrec
  *
  *
  */
-trait LinearSeqOptimized[+A, +Repr <: LinearSeqOptimized[A, Repr]] extends LinearSeqLike[A, Repr] { self: Repr =>
+trait LinearSeqOptimized[-L, +A, +Repr <: LinearSeqOptimized[L, A, Repr]] extends LinearSeqLike[L, A, Repr] { self: Repr =>
 
   type LT
 
@@ -249,8 +249,8 @@ trait LinearSeqOptimized[+A, +Repr <: LinearSeqOptimized[A, Repr]] extends Linea
   }
 
   override /*IterableLike*/
-  def sameElements[B >: A](that: GenIterable[B]): Boolean = that match {
-    case that1: LinearSeq[_] =>
+  def sameElements[B >: A](that: GenIterable[L, B]): Boolean = that match {
+    case that1: LinearSeq[L, _] =>
       // Probably immutable, so check reference identity first (it's quick anyway)
       (this eq that1) || {
         var these = this

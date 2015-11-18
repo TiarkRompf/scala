@@ -48,12 +48,12 @@ object Stack extends SeqFactory[Stack] {
 @SerialVersionUID(1976480595012942526L)
 @deprecated("Stack is an inelegant and potentially poorly-performing wrapper around List.  Use List instead: stack push x becomes x :: list; stack.pop is list.tail.", "2.11.0")
 class Stack[+A] protected (protected val elems: List[A])
-                 extends AbstractSeq[A]
-                    with LinearSeq[A]
-                    with GenericTraversableTemplate[A, Stack]
-                    with LinearSeqOptimized[A, Stack[A]]
+                 extends AbstractSeq[Any, A]
+                    with LinearSeq[Any, A]
+                    with GenericTraversableTemplate[Any, A, Stack]
+                    with LinearSeqOptimized[Any, A, Stack[A]]
                     with Serializable {
-  override def companion: GenericCompanion[Stack] = Stack
+  override def companion: GenericCompanion[Any, Stack] = Stack
 
   def this() = this(Nil)
 
@@ -89,7 +89,7 @@ class Stack[+A] protected (protected val elems: List[A])
    *  @param   xs      the iterator object.
    *  @return the stack with the new elements on top.
    */
-  def pushAll[B >: A](xs: TraversableOnce[B]): Stack[B] =
+  def pushAll[B >: A](xs: TraversableOnce[Any, B]): Stack[B] =
     ((this: Stack[B]) /: xs.toIterator)(_ push _)
 
   /** Returns the top element of the stack. An error is signaled if

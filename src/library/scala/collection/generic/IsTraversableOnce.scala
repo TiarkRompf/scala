@@ -11,7 +11,7 @@ package collection
 package generic
 
 /** Type class witnessing that a collection representation type `Repr` has
- *  elements of type `A` and has a conversion to `GenTraversableOnce[A]`.
+ *  elements of type `A` and has a conversion to `GenTraversableOnce[L, A]`.
  *
  *  This type enables simple enrichment of `GenTraversableOnce`s with extension
  *  methods which can make full use of the mechanics of the Scala collections
@@ -19,7 +19,7 @@ package generic
  *
  *  Example usage,
  * {{{
- *    class FilterMapImpl[A, Repr](val r: GenTraversableOnce[A]) {
+ *    class FilterMapImpl[A, Repr](val r: GenTraversableOnce[L, A]) {
  *      final def filterMap[B, That](f: A => Option[B])(implicit cbf: CanBuildFrom[Repr, B, That]): That = {
  *        val b = cbf()
  *        for(e <- r.seq) f(e) foreach (b +=)
@@ -41,8 +41,8 @@ package generic
 trait IsTraversableOnce[Repr] {
   /** The type of elements we can traverse over. */
   type A
-  /** A conversion from the representation type `Repr` to a `GenTraversableOnce[A]`. */
-  val conversion: Repr => GenTraversableOnce[A]
+  /** A conversion from the representation type `Repr` to a `GenTraversableOnce[Any, A]`. */
+  val conversion: Repr => GenTraversableOnce[Any, A]
 }
 
 object IsTraversableOnce {
@@ -51,10 +51,10 @@ object IsTraversableOnce {
   implicit val stringRepr: IsTraversableOnce[String] { type A = Char } =
     new IsTraversableOnce[String] {
       type A = Char
-      val conversion = implicitly[String => GenTraversableOnce[Char]]
+      val conversion = implicitly[String => GenTraversableOnce[Any, Char]]
     }
 
-  implicit def genTraversableLikeRepr[C[_], A0](implicit conv: C[A0] => GenTraversableOnce[A0]): IsTraversableOnce[C[A0]] { type A = A0 } =
+  implicit def genTraversableLikeRepr[C[_], A0](implicit conv: C[A0] => GenTraversableOnce[Any, A0]): IsTraversableOnce[C[A0]] { type A = A0 } =
     new IsTraversableOnce[C[A0]] {
       type A = A0
       val conversion = conv

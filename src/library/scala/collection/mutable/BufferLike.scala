@@ -45,7 +45,7 @@ import scala.annotation.{migration, bridge}
  *       def clear()
  *       def +=(elem: A): this.type
  *       def +=:(elem: A): this.type
- *       def insertAll(n: Int, iter: Traversable[A])
+ *       def insertAll(n: Int, iter: Traversable[L, A])
  *       def remove(n: Int): A
  *    }}}
  *  @define coll buffer
@@ -64,7 +64,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
                    with Shrinkable[A]
                    with Scriptable[A]
                    with Subtractable[A, This]
-                   with SeqLike[A, This]
+                   with SeqLike[Any, A, This]
                    with scala.Cloneable
 { self : This =>
 
@@ -94,7 +94,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @throws   IndexOutOfBoundsException if the index `n` is not in the valid range
    *            `0 <= n <= length`.
    */
-  def insertAll(n: Int, elems: scala.collection.Traversable[A])
+  def insertAll(n: Int, elems: scala.collection.Traversable[Any, A])
 
    /** Removes the element at a given index from this buffer.
     *
@@ -134,7 +134,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @param xs  the TraversableOnce containing the elements to prepend.
    *  @return the buffer itself.
    */
-  def ++=:(xs: TraversableOnce[A]): this.type = { insertAll(0, xs.toTraversable); this }
+  def ++=:(xs: TraversableOnce[Any, A]): this.type = { insertAll(0, xs.toTraversable); this }
 
   /** Appends the given elements to this buffer.
    *
@@ -145,7 +145,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   /** Appends the elements contained in a traversable object to this buffer.
    *  @param xs  the traversable object containing the elements to append.
    */
-  def appendAll(xs: TraversableOnce[A]) { this ++= xs }
+  def appendAll(xs: TraversableOnce[Any, A]) { this ++= xs }
 
   /** Prepends given elements to this buffer.
    *  @param elems  the elements to prepend.
@@ -155,7 +155,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
   /** Prepends the elements contained in a traversable object to this buffer.
    *  @param xs  the collection containing the elements to prepend.
    */
-  def prependAll(xs: TraversableOnce[A]) { xs ++=: this }
+  def prependAll(xs: TraversableOnce[Any, A]) { xs ++=: this }
 
   /** Inserts new elements at a given index into this buffer.
    *
@@ -216,7 +216,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @return  A sequence that forwards to this buffer for all its operations.
    */
   @deprecated("The returned sequence changes as this buffer is mutated. For an immutable copy, use, e.g., toList.", "2.11.0")
-  def readOnly: scala.collection.Seq[A] = toSeq
+  def readOnly: scala.collection.Seq[Any, A] = toSeq
 
   /** Creates a new collection containing both the elements of this collection and the provided
    *  traversable object.
@@ -225,7 +225,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *  @return       a new collection consisting of all the elements of this collection and `xs`.
    */
   @migration("`++` creates a new buffer. Use `++=` to add an element from this buffer and return that buffer itself.", "2.8.0")
-  def ++(xs: GenTraversableOnce[A]): This = clone() ++= xs.seq
+  def ++(xs: GenTraversableOnce[Any, A]): This = clone() ++= xs.seq
 
   /** Creates a new collection with all the elements of this collection except `elem`.
    *
@@ -255,7 +255,7 @@ trait BufferLike[A, +This <: BufferLike[A, This] with Buffer[A]]
    *                  those in `xs`
    */
   @migration("`--` creates a new buffer. Use `--=` to remove an element from this buffer and return that buffer itself.", "2.8.0")
-  override def --(xs: GenTraversableOnce[A]): This = clone() --= xs.seq
+  override def --(xs: GenTraversableOnce[Any, A]): This = clone() --= xs.seq
 
   /** Return a clone of this buffer.
    *

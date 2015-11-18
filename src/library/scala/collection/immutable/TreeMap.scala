@@ -155,7 +155,7 @@ class TreeMap[A, +B] private (tree: RB.Tree[A, B])(implicit val ordering: Orderi
    *
    *  @param xs     the traversable object.
    */
-  override def ++[B1 >: B] (xs: GenTraversableOnce[(A, B1)]): TreeMap[A, B1] =
+  override def ++[B1 >: B] (xs: GenTraversableOnce[Any, (A, B1)]): TreeMap[A, B1] =
     ((repr: TreeMap[A, B1]) /: xs.seq) (_ + _)
 
   /** A new TreeMap with the entry added is returned,

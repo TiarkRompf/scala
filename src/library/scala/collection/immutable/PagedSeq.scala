@@ -38,7 +38,7 @@ object PagedSeq {
     })
 
   /** Constructs a paged sequence from an iterable */
-  def fromIterable[T: ClassTag](source: Iterable[T]): PagedSeq[T] =
+  def fromIterable[T: ClassTag](source: Iterable[Any, T]): PagedSeq[T] =
     fromIterator(source.iterator)
 
   /** Constructs a paged character sequence from a string iterator */
@@ -59,7 +59,7 @@ object PagedSeq {
   }
 
   /** Constructs a paged character sequence from a string iterable */
-  def fromStrings(source: Iterable[String]): PagedSeq[Char] =
+  def fromStrings(source: Iterable[Any, String]): PagedSeq[Char] =
     fromStrings(source.iterator)
 
   /** Constructs a paged character sequence from a line iterator
@@ -80,7 +80,7 @@ object PagedSeq {
    *  Lines do not contain trailing `\n` characters; The method inserts
    *  a line separator `\n` between any two lines in the sequence.
    */
-  def fromLines(source: Iterable[String]): PagedSeq[Char] =
+  def fromLines(source: Iterable[Any, String]): PagedSeq[Char] =
     fromLines(source.iterator)
 
   /** Constructs a paged character sequence from an input reader
@@ -132,7 +132,7 @@ class PagedSeq[T: ClassTag] protected(
   first1: Page[T],
   start: Int,
   end: Int)
-extends scala.collection.AbstractSeq[T]
+extends scala.collection.AbstractSeq[Any, T]
    with scala.collection.IndexedSeq[T]
 {
   def this(more: (Array[T], Int, Int) => Int) = this(more, new Page[T](0), 0, UndeterminedEnd)

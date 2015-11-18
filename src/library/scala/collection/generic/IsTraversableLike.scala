@@ -21,8 +21,8 @@ package generic
  *
  * `IsTraversable` provides two members:
  *
- *  1. type member `A`, which represents the element type of the target `GenTraversableLike[A, Repr]`
- *  1. value member `conversion`, which provides a way to convert between the type we wish to add extension methods to, `Repr`, and `GenTraversableLike[A, Repr]`.
+ *  1. type member `A`, which represents the element type of the target `GenTraversableLike[L, A, Repr]`
+ *  1. value member `conversion`, which provides a way to convert between the type we wish to add extension methods to, `Repr`, and `GenTraversableLike[L, A, Repr]`.
  *
  * ===Usage===
  *
@@ -36,7 +36,7 @@ package generic
  *    import scala.collection.GenTraversableLike
  *    import scala.collection.generic.IsTraversableLike
  *
- *    class ExtensionMethods[A, Repr](coll: GenTraversableLike[A, Repr]) {
+ *    class ExtensionMethods[A, Repr](coll: GenTraversableLike[L, A, Repr]) {
  *      def mapReduce[B](mapper: A => B)(reducer: (B, B) => B): B = {
  *        val iter = coll.toIterator
  *        var res = mapper(iter.next())
@@ -56,7 +56,7 @@ package generic
  *
  * Here, we begin by creating a class `ExtensionMethods` which contains our
  * `mapReduce` extension method. Note that `ExtensionMethods` takes a constructor
- * argument `coll` of type `GenTraversableLike[A, Repr]`, where `A` represents the
+ * argument `coll` of type `GenTraversableLike[L, A, Repr]`, where `A` represents the
  * element type and `Repr` represents (typically) the collection type. The
  * implementation of `mapReduce` itself is straightforward.
  *
@@ -66,10 +66,10 @@ package generic
  * `IsTraversableLike[Repr]` in scope. Since `IsTraversableLike` provides
  * value member `conversion`, which gives us a way to convert between whatever
  * type we wish to add an extension method to (in this case, `Repr`) and
- * `GenTraversableLike[A, Repr]`, we can now convert `coll` from type `Repr`
- * to `GenTraversableLike[A, Repr]`. This allows us to create an instance of
+ * `GenTraversableLike[L, A, Repr]`, we can now convert `coll` from type `Repr`
+ * to `GenTraversableLike[L, A, Repr]`. This allows us to create an instance of
  * the `ExtensionMethods` class, which we pass our new
- * `GenTraversableLike[A, Repr]` to.
+ * `GenTraversableLike[L, A, Repr]` to.
  *
  * When the `mapReduce` method is called on some type of which it is not
  * a member, implicit search is triggered. Because implicit conversion
@@ -98,7 +98,7 @@ package generic
  * implicit val stringRepr: IsTraversableLike[String] { type A = Char } =
  *   new IsTraversableLike[String] {
  *     type A = Char
- *     val conversion = implicitly[String => GenTraversableLike[Char, String]]
+ *     val conversion = implicitly[String => GenTraversableLike[L, Char, String]]
  *   }
  *}}}
  *
@@ -109,8 +109,8 @@ package generic
 trait IsTraversableLike[Repr] {
   /** The type of elements we can traverse over. */
   type A
-  /** A conversion from the representation type `Repr` to a `GenTraversableLike[A,Repr]`. */
-  val conversion: Repr => GenTraversableLike[A, Repr]
+  /** A conversion from the representation type `Repr` to a `GenTraversableLike[Any, A,Repr]`. */
+  val conversion: Repr => GenTraversableLike[Any, A, Repr]
 }
 
 object IsTraversableLike {
@@ -119,10 +119,10 @@ object IsTraversableLike {
   implicit val stringRepr: IsTraversableLike[String] { type A = Char } =
     new IsTraversableLike[String] {
       type A = Char
-      val conversion = implicitly[String => GenTraversableLike[Char, String]]
+      val conversion = implicitly[String => GenTraversableLike[Any, Char, String]]
     }
 
-  implicit def genTraversableLikeRepr[C[_], A0](implicit conv: C[A0] => GenTraversableLike[A0,C[A0]]): IsTraversableLike[C[A0]] { type A = A0 } =
+  implicit def genTraversableLikeRepr[C[_], A0](implicit conv: C[A0] => GenTraversableLike[Any, A0,C[A0]]): IsTraversableLike[C[A0]] { type A = A0 } =
     new IsTraversableLike[C[A0]] {
       type A = A0
       val conversion = conv

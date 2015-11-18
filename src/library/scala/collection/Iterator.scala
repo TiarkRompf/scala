@@ -30,7 +30,7 @@ object Iterator {
    */
   implicit def IteratorCanBuildFrom[A] = new TraversableOnce.BufferedCanBuildFrom[A, Iterator] {
     def bufferToColl[B](coll: ArrayBuffer[B]) = coll.iterator
-    def traversableToColl[B](t: GenTraversable[B]) = t.toIterator
+    def traversableToColl[B](t: GenTraversable[Any, B]) = t.toIterator
   }
 
   /** The iterator which produces no values. */
@@ -184,16 +184,16 @@ object Iterator {
     def hasNext = (current ne null) && (current.hasNext || advance())
     def next()  = if (hasNext) current.next else Iterator.empty.next
 
-    override def ++[B >: A](that: => GenTraversableOnce[B]): Iterator[B] =
+    override def ++[B >: A](that: => GenTraversableOnce[Any, B]): Iterator[B] =
       new ConcatIterator(current, queue :+ (() => that.toIterator))
   }
 
-  private[scala] final class JoinIterator[+A](lhs: Iterator[A], that: => GenTraversableOnce[A]) extends Iterator[A] {
+  private[scala] final class JoinIterator[+A](lhs: Iterator[A], that: => GenTraversableOnce[Any, A]) extends Iterator[A] {
     private[this] lazy val rhs: Iterator[A] = that.toIterator
     def hasNext = lhs.hasNext || rhs.hasNext
     def next    = if (lhs.hasNext) lhs.next else rhs.next
 
-    override def ++[B >: A](that: => GenTraversableOnce[B]) =
+    override def ++[B >: A](that: => GenTraversableOnce[Any, B]) =
       new ConcatIterator(this, Vector(() => that.toIterator))
   }
 }
@@ -262,7 +262,7 @@ import Iterator.empty
  *  on, as well as the one passed as parameter. Using the old iterators is
  *  undefined and subject to change.
  */
-trait Iterator[+A] extends TraversableOnce[A] {
+trait Iterator[+A] extends TraversableOnce[Any, A] {
   self =>
 
   type LT
@@ -382,7 +382,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
    *  @usecase def ++(that: => Iterator[A]): Iterator[A]
    *    @inheritdoc
    */
-  def ++[B >: A](that: => GenTraversableOnce[B]): Iterator[B] = new Iterator.JoinIterator(self, that)
+  def ++[B >: A](that: => GenTraversableOnce[Any, B]): Iterator[B] = new Iterator.JoinIterator(self, that)
 
   /** Creates a new iterator by applying a function to all values produced by this iterator
    *  and concatenating the results.
@@ -392,7 +392,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
    *           `f` to each value produced by this iterator and concatenating the results.
    *  @note    Reuse: $consumesAndProducesIterator
    */
-  def flatMap[B](f: A => GenTraversableOnce[B]): Iterator[B] = new AbstractIterator[B] {
+  def flatMap[B](f: A => GenTraversableOnce[Any, B]): Iterator[B] = new AbstractIterator[B] {
     private var cur: Iterator[B] = empty
     def hasNext: Boolean =
       cur.hasNext || self.hasNext && { cur = f(self.next()).toIterator; hasNext }
@@ -432,7 +432,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
    *                   `p(x, y)` is `true` for all corresponding elements `x` of this iterator
    *                   and `y` of `that`, otherwise `false`
    */
-  def corresponds[B](that: GenTraversableOnce[B])(p: (A, B) => Boolean): Boolean = {
+  def corresponds[B](that: GenTraversableOnce[Any, B])(p: (A, B) => Boolean): Boolean = {
     val that0 = that.toIterator
     while (hasNext && that0.hasNext)
       if (!p(next(), that0.next())) return false
@@ -871,14 +871,14 @@ trait Iterator[+A] extends TraversableOnce[A] {
   }
 
   /** A flexible iterator for transforming an `Iterator[A]` into an
-   *  Iterator[Seq[A]], with configurable sequence size, step, and
+   *  Iterator[Seq[Any, A]], with configurable sequence size, step, and
    *  strategy for dealing with elements which don't fit evenly.
    *
    *  Typical uses can be achieved via methods `grouped` and `sliding`.
    */
   class GroupedIterator[B >: A](self: Iterator[A], size: Int, step: Int)
-  extends AbstractIterator[Seq[B]]
-     with Iterator[Seq[B]] {
+  extends AbstractIterator[Seq[Any, B]]
+     with Iterator[Seq[Any, B]] {
 
     require(size >= 1 && step >= 1, "size=%d and step=%d, but both must be positive".format(size, step))
 
@@ -927,7 +927,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
      *  so a subsequent self.hasNext would not test self after the
      *  group was consumed.
      */
-    private def takeDestructively(size: Int): Seq[A] = {
+    private def takeDestructively(size: Int): Seq[Any, A] = {
       val buf = new ArrayBuffer[A]
       var i = 0
       // The order of terms in the following condition is important
@@ -947,7 +947,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
       def isFirst = prevSize == 0
       // If there is padding defined we insert it immediately
       // so the rest of the code can be oblivious
-      val xs: Seq[B] = {
+      val xs: Seq[Any, B] = {
         val res = takeDestructively(count)
         // was: extra checks so we don't calculate length unless there's reason
         // but since we took the group eagerly, just use the fast length
@@ -1176,7 +1176,7 @@ trait Iterator[+A] extends TraversableOnce[A] {
     !hasNext && !that.hasNext
   }
 
-  def toTraversable: Traversable[A] = toStream
+  def toTraversable: Traversable[Any, A] = toStream
   def toIterator: Iterator[A] = self
   def toStream: Stream[A] =
     if (self.hasNext) Stream.cons(self.next(), self.toStream)

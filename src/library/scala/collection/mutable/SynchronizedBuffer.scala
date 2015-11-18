@@ -56,7 +56,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param xs the traversable object.
    */
-  override def ++(xs: GenTraversableOnce[A]): Self = synchronized {
+  override def ++(xs: GenTraversableOnce[Any, A]): Self = synchronized {
     super.++(xs)
   }
 
@@ -65,7 +65,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param xs   the iterable object.
    */
-  override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] {
+  override def ++=(xs: TraversableOnce[Any, A]): this.type = synchronized[this.type] {
     super.++=(xs)
   }
 
@@ -82,7 +82,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param xs the traversable object.
    */
-  override def appendAll(xs: TraversableOnce[A]): Unit = synchronized {
+  override def appendAll(xs: TraversableOnce[Any, A]): Unit = synchronized {
     super.appendAll(xs)
   }
 
@@ -100,7 +100,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param xs the traversable object.
    */
-  override def ++=:(xs: TraversableOnce[A]): this.type = synchronized[this.type] { super.++=:(xs) }
+  override def ++=:(xs: TraversableOnce[Any, A]): this.type = synchronized[this.type] { super.++=:(xs) }
 
   /** Prepend an element to this list.
    *
@@ -113,7 +113,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *
    *  @param xs the traversable object.
    */
-  override def prependAll(xs: TraversableOnce[A]): Unit = synchronized {
+  override def prependAll(xs: TraversableOnce[Any, A]): Unit = synchronized {
     super.prependAll(xs)
   }
 
@@ -135,7 +135,7 @@ trait SynchronizedBuffer[A] extends Buffer[A] {
    *  @param n     the index where a new element will be inserted.
    *  @param xs    the traversable object providing all elements to insert.
    */
-  abstract override def insertAll(n: Int, xs: Traversable[A]): Unit = synchronized {
+  abstract override def insertAll(n: Int, xs: Traversable[Any, A]): Unit = synchronized {
      super.insertAll(n, xs)
   }
 

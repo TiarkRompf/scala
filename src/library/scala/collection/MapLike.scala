@@ -56,7 +56,7 @@ import parallel.ParMap
  */
 trait MapLike[A, +B, +This <: MapLike[A, B, This] with Map[A, B]]
   extends PartialFunction[A, B]
-     with IterableLike[(A, B), This]
+     with IterableLike[Any, (A, B), This]
      with GenMapLike[A, B, This]
      with Subtractable[A, This]
      with Parallelizable[(A, B), ParMap[A, B]]
@@ -190,19 +190,19 @@ self =>
    *
    *  @return the keys of this map as an iterable.
    */
-  @migration("`keys` returns `Iterable[A]` rather than `Iterator[A]`.", "2.8.0")
-  def keys: Iterable[A] = keySet
+  @migration("`keys` returns `Iterable[Any, A]` rather than `Iterator[A]`.", "2.8.0")
+  def keys: Iterable[Any, A] = keySet
 
   /** Collects all values of this map in an iterable collection.
    *
    *  @return the values of this map as an iterable.
    */
-  @migration("`values` returns `Iterable[B]` rather than `Iterator[B]`.", "2.8.0")
-  def values: Iterable[B] = new DefaultValuesIterable
+  @migration("`values` returns `Iterable[Any, B]` rather than `Iterator[B]`.", "2.8.0")
+  def values: Iterable[Any, B] = new DefaultValuesIterable
 
   /** The implementation class of the iterable returned by `values`.
    */
-  protected class DefaultValuesIterable extends AbstractIterable[B] with Iterable[B] with Serializable {
+  protected class DefaultValuesIterable extends AbstractIterable[Any, B] with Iterable[Any, B] with Serializable {
     def iterator = valuesIterator
     override def size = self.size
     override def foreach[C](f: B => C) = self.valuesIterator foreach f
@@ -297,10 +297,10 @@ self =>
    *  @tparam   B1  the type of the added values
    *  @return   a new map with the given bindings added to this map
    *
-   *  @usecase  def ++ (xs: Traversable[(A, B)]): Map[A, B]
+   *  @usecase  def ++ (xs: Traversable[Any, (A, B)]): Map[A, B]
    *    @inheritdoc
    */
-  def ++[B1 >: B](xs: GenTraversableOnce[(A, B1)]): Map[A, B1] =
+  def ++[B1 >: B](xs: GenTraversableOnce[Any, (A, B1)]): Map[A, B1] =
     ((repr: Map[A, B1]) /: xs.seq) (_ + _)
 
   /** Returns a new map obtained by removing all key/value pairs for which the predicate
@@ -322,7 +322,7 @@ self =>
   }
 
   /* Overridden for efficiency. */
-  override def toSeq: Seq[(A, B)] = toBuffer[(A, B)]
+  override def toSeq: Seq[Any, (A, B)] = toBuffer[(A, B)]
   override def toBuffer[C >: (A, B)]: mutable.Buffer[C] = {
     val result = new mutable.ArrayBuffer[C](size)
     copyToBuffer(result)

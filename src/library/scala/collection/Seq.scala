@@ -15,14 +15,14 @@ import mutable.Builder
 /** A base trait for sequences.
  *  $seqInfo
  */
-trait Seq[+A] extends PartialFunction[Int, A]
-                      with Iterable[A]
-                      with GenSeq[A]
-                      with GenericTraversableTemplate[A, Seq]
-                      with SeqLike[A, Seq[A]] {
-  override def companion: GenericCompanion[Seq] = Seq
+trait Seq[-L, +A] extends PartialFunction[Int, A]
+                      with Iterable[L, A]
+                      with GenSeq[L, A]
+                      with GenericTraversableTemplate[L, A, Seq]
+                      with SeqLike[L, A, Seq[L, A]] {
+  override def companion: GenericCompanion[L, Seq] = Seq
 
-  override def seq: Seq[A] = this
+  override def seq: Seq[L, A] = this
 }
 
 /** $factoryInfo
@@ -32,10 +32,10 @@ trait Seq[+A] extends PartialFunction[Int, A]
  */
 object Seq extends SeqFactory[Seq] {
   /** $genericCanBuildFromInfo */
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[Any, A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
 
-  def newBuilder[A]: Builder[A, Seq[A]] = immutable.Seq.newBuilder[A]
+  def newBuilder[A]: Builder[A, Seq[Any, A]] = immutable.Seq.newBuilder[A]
 }
 
 /** Explicit instantiation of the `Seq` trait to reduce class file size in subclasses. */
-abstract class AbstractSeq[+A] extends AbstractIterable[A] with Seq[A]
+abstract class AbstractSeq[-L, +A] extends AbstractIterable[L, A] with Seq[L, A]

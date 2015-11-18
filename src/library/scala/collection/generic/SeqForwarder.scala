@@ -26,9 +26,9 @@ import scala.collection.immutable.Range
  *  @since   2.8
  */
 @deprecated("Forwarding is inherently unreliable since it is not automated and new methods can be forgotten.", "2.11.0")
-trait SeqForwarder[+A] extends Seq[A] with IterableForwarder[A] {
+trait SeqForwarder[+A] extends Seq[Any, A] with IterableForwarder[A] {
 
-  protected override def underlying: Seq[A]
+  protected override def underlying: Seq[Any, A]
 
   override def length: Int = underlying.length
   override def apply(idx: Int): A = underlying.apply(idx)
@@ -45,15 +45,15 @@ trait SeqForwarder[+A] extends Seq[A] with IterableForwarder[A] {
   override def lastIndexWhere(p: A => Boolean): Int = underlying lastIndexWhere p
   override def lastIndexWhere(p: A => Boolean, end: Int): Int = underlying.lastIndexWhere(p, end)
   override def reverseIterator: Iterator[A] = underlying.reverseIterator
-  override def startsWith[B](that: GenSeq[B], offset: Int): Boolean = underlying.startsWith(that, offset)
-  override def startsWith[B](that: GenSeq[B]): Boolean = underlying startsWith that
-  override def endsWith[B](that: GenSeq[B]): Boolean = underlying endsWith that
-  override def indexOfSlice[B >: A](that: GenSeq[B]): Int = underlying indexOfSlice that
-  override def indexOfSlice[B >: A](that: GenSeq[B], from: Int): Int = underlying.indexOfSlice(that, from)
-  override def lastIndexOfSlice[B >: A](that: GenSeq[B]): Int = underlying lastIndexOfSlice that
-  override def lastIndexOfSlice[B >: A](that: GenSeq[B], end: Int): Int = underlying.lastIndexOfSlice(that, end)
-  override def containsSlice[B](that: GenSeq[B]): Boolean = underlying containsSlice that
+  override def startsWith[B](that: GenSeq[Any, B], offset: Int): Boolean = underlying.startsWith(that, offset)
+  override def startsWith[B](that: GenSeq[Any, B]): Boolean = underlying startsWith that
+  override def endsWith[B](that: GenSeq[Any, B]): Boolean = underlying endsWith that
+  override def indexOfSlice[B >: A](that: GenSeq[Any, B]): Int = underlying indexOfSlice that
+  override def indexOfSlice[B >: A](that: GenSeq[Any, B], from: Int): Int = underlying.indexOfSlice(that, from)
+  override def lastIndexOfSlice[B >: A](that: GenSeq[Any, B]): Int = underlying lastIndexOfSlice that
+  override def lastIndexOfSlice[B >: A](that: GenSeq[Any, B], end: Int): Int = underlying.lastIndexOfSlice(that, end)
+  override def containsSlice[B](that: GenSeq[Any, B]): Boolean = underlying containsSlice that
   override def contains[A1 >: A](elem: A1): Boolean = underlying contains elem
-  override def corresponds[B](that: GenSeq[B])(p: (A,B) => Boolean): Boolean = underlying.corresponds(that)(p)
+  override def corresponds[B](that: GenSeq[Any, B])(p: (A,B) => Boolean): Boolean = underlying.corresponds(that)(p)
   override def indices: Range = underlying.indices
 }

@@ -52,7 +52,7 @@ extends AbstractSet[A]
 
   def this() = this(null)
 
-  override def companion: GenericCompanion[HashSet] = HashSet
+  override def companion: GenericCompanion[Any, HashSet] = HashSet
 
   override def size: Int = tableSize
 

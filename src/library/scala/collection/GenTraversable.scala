@@ -18,14 +18,14 @@ import generic._
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
-trait GenTraversable[+A]
-extends GenTraversableLike[A, GenTraversable[A]]
-   with GenTraversableOnce[A]
-   with GenericTraversableTemplate[A, GenTraversable]
+trait GenTraversable[-L, +A]
+extends GenTraversableLike[L, A, GenTraversable[L, A]]
+   with GenTraversableOnce[L, A]
+   with GenericTraversableTemplate[L, A, GenTraversable]
 {
 
-  def seq: Traversable[A]
-  def companion: GenericCompanion[GenTraversable] = GenTraversable
+  def seq: Traversable[L, A]
+  def companion: GenericCompanion[L, GenTraversable] = GenTraversable
 }
 
 object GenTraversable extends GenTraversableFactory[GenTraversable] {

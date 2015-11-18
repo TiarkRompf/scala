@@ -29,11 +29,11 @@ import generic._
  *  @define Coll `Buffer`
  *  @define coll buffer
  */
-trait Buffer[A] extends Seq[A]
-                   with GenericTraversableTemplate[A, Buffer]
+trait Buffer[A] extends Seq[Any, A]
+                   with GenericTraversableTemplate[Any, A, Buffer]
                    with BufferLike[A, Buffer[A]]
                    with scala.Cloneable {
-  override def companion: GenericCompanion[Buffer] = Buffer
+  override def companion: GenericCompanion[Any, Buffer] = Buffer
 }
 
 /** $factoryInfo
@@ -46,4 +46,4 @@ object Buffer extends SeqFactory[Buffer] {
 }
 
 /** Explicit instantiation of the `Buffer` trait to reduce class file size in subclasses. */
-abstract class AbstractBuffer[A] extends AbstractSeq[A] with Buffer[A]
+abstract class AbstractBuffer[A] extends AbstractSeq[Any, A] with Buffer[A]

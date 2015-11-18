@@ -26,10 +26,10 @@ import scala.language.higherKinds
  *  @since 2.8
  */
 trait GenericParTemplate[+A, +CC[X] <: ParIterable[X]]
-extends GenericTraversableTemplate[A, CC]
+extends GenericTraversableTemplate[Any, A, CC]
    with HasNewCombiner[A, CC[A] @uncheckedVariance]
 {
-  def companion: GenericCompanion[CC] with GenericParCompanion[CC]
+  def companion: GenericCompanion[Any, CC] with GenericParCompanion[CC]
 
   protected[this] override def newBuilder: scala.collection.mutable.Builder[A, CC[A]] = newCombiner
 

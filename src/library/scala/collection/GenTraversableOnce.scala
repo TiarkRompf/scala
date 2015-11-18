@@ -47,7 +47,7 @@ import scala.language.higherKinds
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
-trait GenTraversableOnce[+A] extends Any {
+trait GenTraversableOnce[-L, +A] extends Any {
 
   protected type LT
   protected type plocal = local[LT]
@@ -56,7 +56,7 @@ trait GenTraversableOnce[+A] extends Any {
 
   def hasDefiniteSize: Boolean
 
-  def seq: TraversableOnce[A]
+  def seq: TraversableOnce[L, A]
 
   /** The size of this $coll.
    *
@@ -531,7 +531,7 @@ trait GenTraversableOnce[+A] extends Any {
    *  $willNotTerminateInf
    *  @return a Traversable containing all elements of this $coll.
    */
-  def toTraversable: GenTraversable[A]
+  def toTraversable: GenTraversable[L, A]
 
   /** Converts this $coll to an iterable collection.  Note that
    *  the choice of target `Iterable` is lazy in this default implementation
@@ -541,7 +541,7 @@ trait GenTraversableOnce[+A] extends Any {
    *  $willNotTerminateInf
    *  @return an `Iterable` containing all elements of this $coll.
    */
-  def toIterable: GenIterable[A]
+  def toIterable: GenIterable[L, A]
 
   /** Converts this $coll to a sequence. As with `toIterable`, it's lazy
    *  in this default implementation, as this `TraversableOnce` may be
@@ -550,7 +550,7 @@ trait GenTraversableOnce[+A] extends Any {
    *  $willNotTerminateInf
    *  @return a sequence containing all elements of this $coll.
    */
-  def toSeq: GenSeq[A]
+  def toSeq: GenSeq[L, A]
 
   /** Converts this $coll to a set.
    *  $willNotTerminateInf

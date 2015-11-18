@@ -59,7 +59,7 @@ import scala.collection.parallel.immutable.ParRange
 @SerialVersionUID(7618862778670199309L)
 @deprecatedInheritance("The implementation details of Range makes inheriting from it unwise.", "2.11.0")
 class Range(val start: Int, val end: Int, val step: Int)
-extends scala.collection.AbstractSeq[Int]
+extends scala.collection.AbstractSeq[Any, Int]
    with IndexedSeq[Int]
    with scala.collection.CustomParallelizable[Int, ParRange]
    with Serializable

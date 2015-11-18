@@ -48,7 +48,7 @@ class SynchronizedPriorityQueue[A](implicit ord: Ordering[A]) extends PriorityQu
    *
    *  @param  xs        a traversable object
    */
-  override def ++=(xs: TraversableOnce[A]): this.type = {
+  override def ++=(xs: TraversableOnce[Any, A]): this.type = {
     synchronized {
       super.++=(xs)
     }

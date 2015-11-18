@@ -17,22 +17,22 @@ import mutable.Builder
 /** A base trait for iterable collections.
  *  $iterableInfo
  */
-trait Iterable[+A] extends Traversable[A]
-                      with GenIterable[A]
-                      with GenericTraversableTemplate[A, Iterable]
-                      with IterableLike[A, Iterable[A]] {
+trait Iterable[-L, +A] extends Traversable[L, A]
+                      with GenIterable[L, A]
+                      with GenericTraversableTemplate[L, A, Iterable]
+                      with IterableLike[L, A, Iterable[L, A]] {
   type LT
 
-  override def companion: GenericCompanion[Iterable] = Iterable
+  override def companion: GenericCompanion[L, Iterable] = Iterable
 
   override def seq = this
 
   /* The following methods are inherited from trait IterableLike
    *
   override def iterator: Iterator[A]
-  override def takeRight(n: Int): Iterable[A]
-  override def dropRight(n: Int): Iterable[A]
-  override def sameElements[B >: A](that: GenIterable[B]): Boolean
+  override def takeRight(n: Int): Iterable[L, A]
+  override def dropRight(n: Int): Iterable[L, A]
+  override def sameElements[B >: A](that: GenIterable[L, B]): Boolean
   override def view
   override def view(from: Int, until: Int)
   */
@@ -47,10 +47,10 @@ trait Iterable[+A] extends Traversable[A]
 object Iterable extends TraversableFactory[Iterable] {
 
   /** $genericCanBuildFromInfo */
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[Any, A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
 
-  def newBuilder[A]: Builder[A, Iterable[A]] = immutable.Iterable.newBuilder[A]
+  def newBuilder[A]: Builder[A, Iterable[Any, A]] = immutable.Iterable.newBuilder[A]
 }
 
 /** Explicit instantiation of the `Iterable` trait to reduce class file size in subclasses. */
-abstract class AbstractIterable[+A] extends AbstractTraversable[A] with Iterable[A]
+abstract class AbstractIterable[-L, +A] extends AbstractTraversable[L, A] with Iterable[L, A]

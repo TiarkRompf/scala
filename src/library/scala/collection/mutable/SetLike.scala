@@ -172,7 +172,7 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
    *  @return          a new set consisting of elements of this set and those in `xs`.
    */
   @migration("`++` creates a new set. Use `++=` to add elements to this set and return that set itself.", "2.8.0")
-  override def ++(xs: GenTraversableOnce[A]): This = clone() ++= xs.seq
+  override def ++(xs: GenTraversableOnce[Any, A]): This = clone() ++= xs.seq
 
   /** Creates a new set consisting of all the elements of this set except `elem`.
    *
@@ -203,7 +203,7 @@ trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
    *                  elements from `xs`.
    */
   @migration("`--` creates a new set. Use `--=` to remove elements from this set and return that set itself.", "2.8.0")
-  override def --(xs: GenTraversableOnce[A]): This = clone() --= xs.seq
+  override def --(xs: GenTraversableOnce[Any, A]): This = clone() --= xs.seq
 
   /** Send a message to this scriptable object.
    *

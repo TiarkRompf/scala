@@ -199,15 +199,15 @@ import scala.language.implicitConversions
  *  @define willTerminateInf Note: lazily evaluated; will terminate for infinite-sized collections.
  */
 @deprecatedInheritance("This class will be sealed.", "2.11.0")
-abstract class Stream[+A] extends AbstractSeq[A]
-                             with LinearSeq[A]
-                             with GenericTraversableTemplate[A, Stream]
-                             with LinearSeqOptimized[A, Stream[A]]
+abstract class Stream[+A] extends AbstractSeq[Any, A]
+                             with LinearSeq[Any, A]
+                             with GenericTraversableTemplate[Any, A, Stream]
+                             with LinearSeqOptimized[Any, A, Stream[A]]
                              with Serializable {
 self =>
   override type LT = Nothing
 
-  override def companion: GenericCompanion[Stream] = Stream
+  override def companion: GenericCompanion[Any, Stream] = Stream
 
   import scala.collection.{Traversable, Iterable, Seq, IndexedSeq}
 
@@ -253,7 +253,7 @@ self =>
    *  @param rest   The stream that gets appended to this stream
    *  @return       The stream containing elements of this stream and the traversable object.
    */
-  def append[B >: A](rest: => TraversableOnce[B]): Stream[B] =
+  def append[B >: A](rest: => TraversableOnce[Any, B]): Stream[B] =
     if (isEmpty) rest.toStream else cons(head, tail append rest)
 
   /** Forces evaluation of the whole stream and returns it.
@@ -367,7 +367,7 @@ self =>
    * @return A new collection containing the result of concatenating `this` with
    * `that`.
    */
-  override def ++[B >: A, That](that: GenTraversableOnce[B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That =
+  override def ++[B >: A, That](that: GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That =
     // we assume there is no other builder factory on streams and therefore know that That = Stream[A]
     if (isStreamBuilder(bf)) asThat(
       if (isEmpty) that.toStream
@@ -479,7 +479,7 @@ self =>
    * @return  `f(a,,0,,) ::: ... ::: f(a,,n,,)` if
    *           this stream is `[a,,0,,, ..., a,,n,,]`.
    */
-  override final def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That =
+  override final def flatMap[B, That](f: A => GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That =
     // we assume there is no other builder factory on streams and therefore know that That = Stream[B]
     // optimisations are not for speed, but for functionality
     // see tickets #153, #498, #2147, and corresponding tests in run/ (as well as run/stream_flatmap_odds.scala)
@@ -549,7 +549,7 @@ self =>
       else super.map(f)(bf)
     }
 
-    override def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That = {
+    override def flatMap[B, That](f: A => GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[Stream[A], B, That]): That = {
       def tailFlatMap(coll: Stream[A]): Stream[B] = {
         var head: A = null.asInstanceOf[A]
         var tail: Stream[A] = coll
@@ -683,7 +683,7 @@ self =>
    * // (5,6)
    * }}}
    */
-  override final def zip[A1 >: A, B, That](that: scala.collection.GenIterable[B])(implicit bf: CanBuildFrom[Stream[A], (A1, B), That]): That =
+  override final def zip[A1 >: A, B, That](that: scala.collection.GenIterable[Any, B])(implicit bf: CanBuildFrom[Stream[A], (A1, B), That]): That =
     // we assume there is no other builder factory on streams and therefore know that That = Stream[(A1, B)]
     if (isStreamBuilder(bf)) asThat(
       if (this.isEmpty || that.isEmpty) Stream.Empty
@@ -1071,7 +1071,7 @@ self =>
    * // produces: "0, 0, 0, 0, 0, 0, 0, 0, 0, 0"
    * }}}
    */
-  override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[B]): Stream[B] = {
+  override def flatten[B](implicit asTraversable: A => /*<:<!!!*/ GenTraversableOnce[Any, B]): Stream[B] = {
     var st: Stream[A] = this
     while (st.nonEmpty) {
       val h = asTraversable(st.head)

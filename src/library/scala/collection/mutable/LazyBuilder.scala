@@ -20,9 +20,9 @@ package mutable
  */
 abstract class LazyBuilder[Elem, +To] extends Builder[Elem, To] {
   /** The different segments of elements to be added to the builder, represented as iterators */
-  protected var parts = new ListBuffer[TraversableOnce[Elem]]
+  protected var parts = new ListBuffer[TraversableOnce[Any, Elem]]
   def +=(x: Elem): this.type = { parts += List(x); this }
-  override def ++=(xs: TraversableOnce[Elem]): this.type = { parts += xs ; this }
+  override def ++=(xs: TraversableOnce[Any, Elem]): this.type = { parts += xs ; this }
   def result(): To
   def clear() { parts.clear() }
 }

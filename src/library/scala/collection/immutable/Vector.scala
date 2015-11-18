@@ -24,7 +24,7 @@ object Vector extends IndexedSeqFactory[Vector] {
     ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   private[immutable] val NIL = new Vector[Nothing](0, 0, 0)
   override def empty[A]: Vector[A] = NIL
-  
+
   // Constants governing concat strategy for performance
   private final val Log2ConcatFaster = 5
   private final val TinyAppendFaster = 2
@@ -60,16 +60,16 @@ object Vector extends IndexedSeqFactory[Vector] {
  *  @define willNotTerminateInf
  */
 final class Vector[+A] private[immutable] (private[collection] val startIndex: Int, private[collection] val endIndex: Int, focus: Int)
-extends AbstractSeq[A]
+extends AbstractSeq[Any, A]
    with IndexedSeq[A]
-   with GenericTraversableTemplate[A, Vector]
+   with GenericTraversableTemplate[Any, A, Vector]
    with IndexedSeqLike[A, Vector[A]]
    with VectorPointer[A @uncheckedVariance]
    with Serializable
    with CustomParallelizable[A, ParVector[A]]
 { self =>
 
-override def companion: GenericCompanion[Vector] = Vector
+override def companion: GenericCompanion[Any, Vector] = Vector
 
   //assert(startIndex >= 0, startIndex+"<0")
   //assert(startIndex <= endIndex, startIndex+">"+endIndex)
@@ -135,7 +135,7 @@ override def companion: GenericCompanion[Vector] = Vector
   // If we have a default builder, there are faster ways to perform some operations
   @inline private[this] def isDefaultCBF[A, B, That](bf: CanBuildFrom[Vector[A], B, That]): Boolean =
     (bf eq IndexedSeq.ReusableCBF) || (bf eq collection.immutable.Seq.ReusableCBF) || (bf eq collection.Seq.ReusableCBF)
-    
+
   // SeqLike api
 
   override def updated[B >: A, That](index: Int, elem: B)(implicit bf: CanBuildFrom[Vector[A], B, That]): That =
@@ -216,7 +216,7 @@ override def companion: GenericCompanion[Vector] = Vector
 
 
   // concat (suboptimal but avoids worst performance gotchas)
-  override def ++[B >: A, That](that: GenTraversableOnce[B])(implicit bf: CanBuildFrom[Vector[A], B, That]): That = {
+  override def ++[B >: A, That](that: GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[Vector[A], B, That]): That = {
     if (isDefaultCBF(bf)) {
       // We are sure we will create a Vector, so let's do it efficiently
       import Vector.{Log2ConcatFaster, TinyAppendFaster}
@@ -225,7 +225,7 @@ override def companion: GenericCompanion[Vector] = Vector
         val again = if (!that.isTraversableAgain) that.toVector else that.seq
         again.size match {
           // Often it's better to append small numbers of elements (or prepend if RHS is a vector)
-          case n if n <= TinyAppendFaster || n < (this.size >> Log2ConcatFaster) => 
+          case n if n <= TinyAppendFaster || n < (this.size >> Log2ConcatFaster) =>
             var v: Vector[B] = this
             for (x <- again) v = v :+ x
             v.asInstanceOf[That]
@@ -728,7 +728,7 @@ final class VectorBuilder[A]() extends Builder[A,Vector[A]] with VectorPointer[A
     this
   }
 
-  override def ++=(xs: TraversableOnce[A]): this.type =
+  override def ++=(xs: TraversableOnce[Any, A]): this.type =
     super.++=(xs)
 
   def result: Vector[A] = {

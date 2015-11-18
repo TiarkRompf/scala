@@ -19,4 +19,4 @@ package collection
  *  @since   2.8
  */
 @deprecated("Proxying is deprecated due to lack of use and compiler-level support.", "2.11.0")
-trait SeqProxy[+A] extends Seq[A] with SeqProxyLike[A, Seq[A]]
+trait SeqProxy[+A] extends Seq[Any, A] with SeqProxyLike[A, Seq[Any, A]]

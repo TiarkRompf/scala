@@ -37,10 +37,10 @@ import generic._
  */
 @deprecatedInheritance("PriorityQueue is not intended to be subclassed due to extensive private implementation details.", "2.11.0")
 class PriorityQueue[A](implicit val ord: Ordering[A])
-   extends AbstractIterable[A]
-      with Iterable[A]
+   extends AbstractIterable[Any, A]
+      with Iterable[Any, A]
       with GenericOrderedTraversableTemplate[A, PriorityQueue]
-      with IterableLike[A, PriorityQueue[A]]
+      with IterableLike[Any, A, PriorityQueue[A]]
       with Growable[A]
       with Builder[A, PriorityQueue[A]]
       with Serializable
@@ -48,7 +48,7 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
 {
   import ord._
 
-  private class ResizableArrayAccess[A] extends AbstractSeq[A] with ResizableArray[A] with Serializable {
+  private class ResizableArrayAccess[A] extends AbstractSeq[Any, A] with ResizableArray[A] with Serializable {
     def p_size0 = size0
     def p_size0_=(s: Int) = size0 = s
     def p_array = array
@@ -115,7 +115,7 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
    *  @param  xs    a traversable object.
    *  @return       a new priority queue containing elements of both `xs` and `this`.
    */
-  def ++(xs: GenTraversableOnce[A]): PriorityQueue[A] = { this.clone() ++= xs.seq }
+  def ++(xs: GenTraversableOnce[Any, A]): PriorityQueue[A] = { this.clone() ++= xs.seq }
 
   /** Adds all elements to the queue.
    *

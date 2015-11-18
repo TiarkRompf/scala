@@ -19,12 +19,12 @@ import mutable.Builder
  *  are guaranteed immutable.
  *  $linearSeqInfo
  */
-trait LinearSeq[+A] extends Seq[A]
-                            with scala.collection.LinearSeq[A]
-                            with GenericTraversableTemplate[A, LinearSeq]
-                            with LinearSeqLike[A, LinearSeq[A]] {
-  override def companion: GenericCompanion[LinearSeq] = LinearSeq
-  override def seq: LinearSeq[A] = this
+trait LinearSeq[-L, +A] extends Seq[L, A]
+                            with scala.collection.LinearSeq[L, A]
+                            with GenericTraversableTemplate[L, A, LinearSeq]
+                            with LinearSeqLike[L, A, LinearSeq[L, A]] {
+  override def companion: GenericCompanion[L, LinearSeq] = LinearSeq
+  override def seq: LinearSeq[L, A] = this
 }
 
 /** $factoryInfo
@@ -33,6 +33,6 @@ trait LinearSeq[+A] extends Seq[A]
  *  @define Coll `immutable.LinearSeq`
  */
 object LinearSeq extends SeqFactory[LinearSeq] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, LinearSeq[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
-  def newBuilder[A]: Builder[A, LinearSeq[A]] = new mutable.ListBuffer
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, LinearSeq[Any, A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  def newBuilder[A]: Builder[A, LinearSeq[Any, A]] = new mutable.ListBuffer
 }

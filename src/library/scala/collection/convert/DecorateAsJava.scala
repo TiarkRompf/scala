@@ -108,7 +108,7 @@ trait DecorateAsJava {
    * @return An object with an `asJavaCollection` method that returns a Java
    *         `Iterable` view of the argument.
    */
-  implicit def asJavaIterableConverter[A](i : Iterable[A]): AsJava[jl.Iterable[A]] =
+  implicit def asJavaIterableConverter[A](i : Iterable[Any, A]): AsJava[jl.Iterable[Any, A]] =
     new AsJava(asJavaIterable(i))
 
   /**
@@ -123,7 +123,7 @@ trait DecorateAsJava {
    * @return An object with an `asJava` method that returns a Java
    *         `Collection` view of the argument.
    */
-  implicit def asJavaCollectionConverter[A](i : Iterable[A]): AsJavaCollection[A] =
+  implicit def asJavaCollectionConverter[A](i : Iterable[Any, A]): AsJavaCollection[A] =
     new AsJavaCollection(i)
 
   /**
@@ -161,7 +161,7 @@ trait DecorateAsJava {
    * @return An object with an `asJava` method that returns a Java `List`
    *         view of the argument.
    */
-  implicit def mutableSeqAsJavaListConverter[A](b : mutable.Seq[A]): AsJava[ju.List[A]] =
+  implicit def mutableSeqAsJavaListConverter[A](b : mutable.Seq[Any, A]): AsJava[ju.List[A]] =
     new AsJava(mutableSeqAsJavaList(b))
 
   /**
@@ -180,7 +180,7 @@ trait DecorateAsJava {
    * @return An object with an `asJava` method that returns a Java `List`
    *         view of the argument.
    */
-  implicit def seqAsJavaListConverter[A](b : Seq[A]): AsJava[ju.List[A]] =
+  implicit def seqAsJavaListConverter[A](b : Seq[Any, A]): AsJava[ju.List[A]] =
     new AsJava(seqAsJavaList(b))
 
   /**

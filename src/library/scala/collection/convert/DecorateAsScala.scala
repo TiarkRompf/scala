@@ -70,7 +70,7 @@ trait DecorateAsScala {
    * @return An object with an `asScala` method that returns a Scala `Iterable`
    *         view of the argument.
    */
-  implicit def iterableAsScalaIterableConverter[A](i : jl.Iterable[A]): AsScala[Iterable[A]] =
+  implicit def iterableAsScalaIterableConverter[A](i : jl.Iterable[Any, A]): AsScala[Iterable[Any, A]] =
     new AsScala(iterableAsScalaIterable(i))
 
   /**
@@ -85,7 +85,7 @@ trait DecorateAsScala {
    * @return An object with an `asScala` method that returns a Scala
    *        `SizedIterable` view of the argument.
    */
-  implicit def collectionAsScalaIterableConverter[A](i : ju.Collection[A]): AsScala[Iterable[A]] =
+  implicit def collectionAsScalaIterableConverter[A](i : ju.Collection[A]): AsScala[Iterable[Any, A]] =
     new AsScala(collectionAsScalaIterable(i))
 
   /**
@@ -135,9 +135,9 @@ trait DecorateAsScala {
    * If the Java `Map` was previously obtained from an implicit or explicit
    * call of `asMap(scala.collection.mutable.Map)` then the original
    * Scala `Map` will be returned.
-   * 
+   *
    * If the wrapped map is synchronized (e.g. from `java.util.Collections.synchronizedMap`),
-   * it is your responsibility to wrap all 
+   * it is your responsibility to wrap all
    * non-atomic operations with `underlying.synchronized`.
    * This includes `get`, as `java.util.Map`'s API does not allow for an
    * atomic `get` when `null` values may be present.

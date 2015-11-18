@@ -65,8 +65,8 @@ trait WrapAsJava {
    * @param i The Iterable to be converted.
    * @return A Java Iterable view of the argument.
    */
-  implicit def asJavaIterable[A](i: Iterable[A]): jl.Iterable[A] = i match {
-    case JIterableWrapper(wrapped) => wrapped.asInstanceOf[jl.Iterable[A]]
+  implicit def asJavaIterable[A](i: Iterable[Any, A]): jl.Iterable[Any, A] = i match {
+    case JIterableWrapper(wrapped) => wrapped.asInstanceOf[jl.Iterable[Any, A]]
     case _ => IterableWrapper(i)
   }
 
@@ -81,7 +81,7 @@ trait WrapAsJava {
    * @param it The SizedIterable to be converted.
    * @return   A Java Collection view of the argument.
    */
-  implicit def asJavaCollection[A](it: Iterable[A]): ju.Collection[A] = it match {
+  implicit def asJavaCollection[A](it: Iterable[Any, A]): ju.Collection[A] = it match {
     case JCollectionWrapper(wrapped) => wrapped.asInstanceOf[ju.Collection[A]]
     case _ => new IterableWrapper(it)
   }
@@ -117,7 +117,7 @@ trait WrapAsJava {
    * @param seq The Seq to be converted.
    * @return    A Java List view of the argument.
    */
-  implicit def mutableSeqAsJavaList[A](seq: mutable.Seq[A]): ju.List[A] = seq match {
+  implicit def mutableSeqAsJavaList[A](seq: mutable.Seq[Any, A]): ju.List[A] = seq match {
     case JListWrapper(wrapped) => wrapped
     case _ => new MutableSeqWrapper(seq)
   }
@@ -135,7 +135,7 @@ trait WrapAsJava {
    * @param seq The Seq to be converted.
    * @return    A Java List view of the argument.
    */
-  implicit def seqAsJavaList[A](seq: Seq[A]): ju.List[A] = seq match {
+  implicit def seqAsJavaList[A](seq: Seq[Any, A]): ju.List[A] = seq match {
     case JListWrapper(wrapped) => wrapped.asInstanceOf[ju.List[A]]
     case _ => new SeqWrapper(seq)
   }

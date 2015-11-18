@@ -36,7 +36,7 @@ trait Splitter[+T] extends Iterator[T] {
    *
    *  @return a sequence of disjunct iterators of the collection
    */
-  def split: Seq[Splitter[T]]
+  def split: Seq[Any, Splitter[T]]
   /*
    *  '''Note:''' splitters in this sequence may actually be empty and it can contain a splitter
    *  which iterates over the same elements as the original splitter AS LONG AS calling `split`

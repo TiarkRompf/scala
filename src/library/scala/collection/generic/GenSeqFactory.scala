@@ -18,5 +18,5 @@ import scala.language.higherKinds
  *
  *  @since 2.8
  */
-abstract class GenSeqFactory[CC[X] <: GenSeq[X] with GenericTraversableTemplate[X, CC]]
+abstract class GenSeqFactory[CC[J, X] <: GenSeq[Any, X] with GenericTraversableTemplate[Any, X, CC]]
 extends GenTraversableFactory[CC]

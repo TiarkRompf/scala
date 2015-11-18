@@ -54,7 +54,7 @@ package object parallel {
   }
 
   /** Adds toParArray method to collection classes. */
-  implicit class CollectionsHaveToParArray[C, T](c: C)(implicit asGto: C => scala.collection.GenTraversableOnce[T]) {
+  implicit class CollectionsHaveToParArray[C, T](c: C)(implicit asGto: C => scala.collection.GenTraversableOnce[L, T]) {
     def toParArray = {
       val t = asGto(c)
       if (t.isInstanceOf[ParArray[_]]) t.asInstanceOf[ParArray[T]]
@@ -79,7 +79,7 @@ package parallel {
         def otherwise(notbody: => R) = if (isParallel) isbody(asParallel) else notbody
       }
     }
-    implicit def traversable2ops[T](t: scala.collection.GenTraversableOnce[T]) = new TraversableOps[T] {
+    implicit def traversable2ops[T](t: scala.collection.GenTraversableOnce[L, T]) = new TraversableOps[T] {
       def isParallel = t.isInstanceOf[Parallel]
       def isParIterable = t.isInstanceOf[ParIterable[_]]
       def asParIterable = t.asInstanceOf[ParIterable[T]]
@@ -98,7 +98,7 @@ package parallel {
       }
     }
   }
-  
+
   trait FactoryOps[From, Elem, To] {
     trait Otherwise[R] {
       def otherwise(notbody: => R): R
@@ -165,7 +165,7 @@ package parallel {
     }
     def remaining = until - index
     def dup = new BufferSplitter(buffer, index, until, signalDelegate)
-    def split: Seq[IterableSplitter[T]] = if (remaining > 1) {
+    def split: Seq[L, IterableSplitter[T]] = if (remaining > 1) {
       val divsz = (until - index) / 2
       Seq(
         new BufferSplitter(buffer, index, index + divsz, signalDelegate),

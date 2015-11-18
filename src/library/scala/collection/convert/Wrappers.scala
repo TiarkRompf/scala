@@ -20,7 +20,7 @@ import WrapAsJava._
  */
 private[collection] trait Wrappers {
   trait IterableWrapperTrait[A] extends ju.AbstractCollection[A] {
-    val underlying: Iterable[A]
+    val underlying: Iterable[Any, A]
     def size = underlying.size
     override def iterator = IteratorWrapper(underlying.iterator)
     override def isEmpty = underlying.isEmpty
@@ -48,25 +48,25 @@ private[collection] trait Wrappers {
     def next() = underlying.nextElement
   }
 
-  case class IterableWrapper[A](underlying: Iterable[A]) extends ju.AbstractCollection[A] with IterableWrapperTrait[A] { }
+  case class IterableWrapper[A](underlying: Iterable[Any, A]) extends ju.AbstractCollection[A] with IterableWrapperTrait[A] { }
 
-  case class JIterableWrapper[A](underlying: jl.Iterable[A]) extends AbstractIterable[A] with Iterable[A] {
+  case class JIterableWrapper[A](underlying: jl.Iterable[Any, A]) extends AbstractIterable[Any, A] with Iterable[Any, A] {
     def iterator = underlying.iterator
     def newBuilder[B] = new mutable.ArrayBuffer[B]
   }
 
-  case class JCollectionWrapper[A](underlying: ju.Collection[A]) extends AbstractIterable[A] with Iterable[A] {
+  case class JCollectionWrapper[A](underlying: ju.Collection[A]) extends AbstractIterable[Any, A] with Iterable[Any, A] {
     def iterator = underlying.iterator
     override def size = underlying.size
     override def isEmpty = underlying.isEmpty
     def newBuilder[B] = new mutable.ArrayBuffer[B]
   }
 
-  case class SeqWrapper[A](underlying: Seq[A]) extends ju.AbstractList[A] with IterableWrapperTrait[A] {
+  case class SeqWrapper[A](underlying: Seq[Any, A]) extends ju.AbstractList[A] with IterableWrapperTrait[A] {
     def get(i: Int) = underlying(i)
   }
 
-  case class MutableSeqWrapper[A](underlying: mutable.Seq[A]) extends ju.AbstractList[A] with IterableWrapperTrait[A] {
+  case class MutableSeqWrapper[A](underlying: mutable.Seq[Any, A]) extends ju.AbstractList[A] with IterableWrapperTrait[A] {
     def get(i: Int) = underlying(i)
     override def set(i: Int, elem: A) = {
       val p = underlying(i)
@@ -90,7 +90,7 @@ private[collection] trait Wrappers {
     def update(i: Int, elem: A) = underlying.set(i, elem)
     def +=:(elem: A) = { underlying.subList(0, 0) add elem; this }
     def +=(elem: A): this.type = { underlying add elem; this }
-    def insertAll(i: Int, elems: Traversable[A]) = {
+    def insertAll(i: Int, elems: Traversable[Any, A]) = {
       val ins = underlying.subList(0, i)
       elems.seq.foreach(ins.add(_))
     }
@@ -289,8 +289,8 @@ private[collection] trait Wrappers {
   }
 
   /** Wraps a Java map as a Scala one.  If the map is to support concurrent access,
-    * use [[JConcurrentMapWrapper]] instead.  If the wrapped map is synchronized 
-    * (e.g. from `java.util.Collections.synchronizedMap`), it is your responsibility 
+    * use [[JConcurrentMapWrapper]] instead.  If the wrapped map is synchronized
+    * (e.g. from `java.util.Collections.synchronizedMap`), it is your responsibility
     * to wrap all non-atomic operations with `underlying.synchronized`.
     * This includes `get`, as `java.util.Map`'s API does not allow for an
     * atomic `get` when `null` values may be present.

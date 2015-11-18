@@ -40,13 +40,13 @@ import scala.annotation.tailrec
 @SerialVersionUID(-7622936493364270175L)
 @deprecatedInheritance("The implementation details of immutable queues make inheriting from them unwise.", "2.11.0")
 class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
-         extends AbstractSeq[A]
-            with LinearSeq[A]
-            with GenericTraversableTemplate[A, Queue]
-            with LinearSeqLike[A, Queue[A]]
+         extends AbstractSeq[Any, A]
+            with LinearSeq[Any, A]
+            with GenericTraversableTemplate[Any, A, Queue]
+            with LinearSeqLike[Any, A, Queue[A]]
             with Serializable {
 
-  override def companion: GenericCompanion[Queue] = Queue
+  override def companion: GenericCompanion[Any, Queue] = Queue
 
   /** Returns the `n`-th element of this queue.
    *  The first element is at position `0`.
@@ -115,7 +115,7 @@ class Queue[+A] protected(protected val in: List[A], protected val out: List[A])
    *
    *  @param  iter        an iterable object
    */
-  def enqueue[B >: A](iter: Iterable[B]) =
+  def enqueue[B >: A](iter: Iterable[Any, B]) =
     new Queue(iter.toList reverse_::: in, out)
 
   /** Returns a tuple with the first element in the queue,

@@ -13,7 +13,7 @@ import generic._
 import immutable.{ List, Stream }
 import scala.annotation.unchecked.uncheckedVariance
 
-/** A template trait for iterable collections of type `Iterable[A]`.
+/** A template trait for iterable collections of type `Iterable[L, A]`.
  *  $iterableInfo
  *  @define iterableInfo
  *    This is a base trait for all $mutability Scala collections that define an `iterator`
@@ -48,13 +48,13 @@ import scala.annotation.unchecked.uncheckedVariance
  *  @define Coll Iterable
  *  @define coll iterable collection
  */
-trait IterableLike[+A, +Repr] extends Any with Equals with TraversableLike[A, Repr] with GenIterableLike[A, Repr] {
+trait IterableLike[-L, +A, +Repr] extends Any with Equals with TraversableLike[L, A, Repr] with GenIterableLike[L, A, Repr] {
 self =>
 
   type LT
 
-  override protected[this] def thisCollection: Iterable[A] = this.asInstanceOf[Iterable[A]]
-  override protected[this] def toCollection(repr: Repr): Iterable[A] = repr.asInstanceOf[Iterable[A]]
+  override protected[this] def thisCollection: Iterable[L, A] = this.asInstanceOf[Iterable[L, A]]
+  override protected[this] def toCollection(repr: Repr): Iterable[L, A] = repr.asInstanceOf[Iterable[L, A]]
 
   /** Creates a new iterator over all elements contained in this iterable object.
    *
@@ -94,7 +94,7 @@ self =>
    *  $willNotTerminateInf
    *  @return an `Iterable` containing all elements of this $coll.
    */
-  override /*TraversableLike*/ def toIterable: Iterable[A] =
+  override /*TraversableLike*/ def toIterable: Iterable[L, A] =
     thisCollection
 
   /** Returns an Iterator over the elements in this $coll.  Produces the same
@@ -258,7 +258,7 @@ self =>
     }
   }
 
-  def zip[A1 >: A, B, That](that: GenIterable[B])(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = {
+  def zip[A1 >: A, B, That](that: GenIterable[L, B])(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = {
     val b = bf(repr)
     val these = this.iterator
     val those = that.iterator
@@ -267,7 +267,7 @@ self =>
     b.result()
   }
 
-  def zipAll[B, A1 >: A, That](that: GenIterable[B], thisElem: A1, thatElem: B)(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = {
+  def zipAll[B, A1 >: A, That](that: GenIterable[L, B], thisElem: A1, thatElem: B)(implicit bf: CanBuildFrom[Repr, (A1, B), That]): That = {
     val b = bf(repr)
     val these = this.iterator
     val those = that.iterator
@@ -290,7 +290,7 @@ self =>
     b.result()
   }
 
-  def sameElements[B >: A](that: GenIterable[B]): Boolean = {
+  def sameElements[B >: A](that: GenIterable[L, B]): Boolean = {
     val these = this.iterator
     val those = that.iterator
     while (these.hasNext && those.hasNext)

@@ -25,13 +25,13 @@ import generic._
  *  @define Coll `mutable.Seq`
  *  @define coll mutable sequence
  */
-trait Seq[A] extends Iterable[A]
-//                with GenSeq[A]
-                with scala.collection.Seq[A]
-                with GenericTraversableTemplate[A, Seq]
-                with SeqLike[A, Seq[A]] {
-  override def companion: GenericCompanion[Seq] = Seq
-  override def seq: Seq[A] = this
+trait Seq[-L, A] extends Iterable[L, A]
+//                with GenSeq[L, A]
+                with scala.collection.Seq[L, A]
+                with GenericTraversableTemplate[L, A, Seq]
+                with SeqLike[L, A, Seq[L, A]] {
+  override def companion: GenericCompanion[L, Seq] = Seq
+  override def seq: Seq[L, A] = this
 }
 
 /** $factoryInfo
@@ -40,9 +40,9 @@ trait Seq[A] extends Iterable[A]
  *  @define Coll `mutable.Seq`
  */
 object Seq extends SeqFactory[Seq] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
-  def newBuilder[A]: Builder[A, Seq[A]] = new ArrayBuffer
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Seq[Any, A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  def newBuilder[A]: Builder[A, Seq[Any, A]] = new ArrayBuffer
 }
 
 /** Explicit instantiation of the `Seq` trait to reduce class file size in subclasses. */
-abstract class AbstractSeq[A] extends scala.collection.AbstractSeq[A] with Seq[A]
+abstract class AbstractSeq[-L, A] extends scala.collection.AbstractSeq[L, A] with Seq[L, A]

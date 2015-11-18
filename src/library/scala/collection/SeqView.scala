@@ -23,9 +23,9 @@ trait SeqView[+A, +Coll] extends SeqViewLike[A, Coll, SeqView[A, Coll]]
  *  `SeqView`s work. Its definitions are generally not accessed directly by clients.
  */
 object SeqView {
-  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_]}
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, SeqView[A, Seq[_]]] =
-    new CanBuildFrom[Coll, A, SeqView[A, Seq[_]]] {
+  type Coll = TraversableView[_, C] forSome {type C <: Traversable[_, _]}
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, SeqView[A, Seq[_, _]]] =
+    new CanBuildFrom[Coll, A, SeqView[A, Seq[_, _]]] {
       def apply(from: Coll) = new NoBuilder
       def apply() = new NoBuilder
     }

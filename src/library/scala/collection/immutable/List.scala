@@ -81,15 +81,15 @@ import java.io._
  *  @define willNotTerminateInf
  */
 @SerialVersionUID(-6084104484083858598L) // value computed by serialver for 2.11.2, annotation added in 2.11.4
-sealed abstract class List[+A] extends AbstractSeq[A]
-                                  with LinearSeq[A]
+sealed abstract class List[+A] extends AbstractSeq[Any, A]
+                                  with LinearSeq[Any, A]
                                   with Product
-                                  with GenericTraversableTemplate[A, List]
-                                  with LinearSeqOptimized[A, List[A]]
+                                  with GenericTraversableTemplate[Any, A, List]
+                                  with LinearSeqOptimized[Any, A, List[A]]
                                   with Serializable {
   override protected type LT = Any
 
-  override def companion: GenericCompanion[List] = List
+  override def companion: GenericCompanion[Any, List] = List
 
   import scala.collection.{Iterable, Traversable, Seq, IndexedSeq}
 
@@ -194,7 +194,7 @@ sealed abstract class List[+A] extends AbstractSeq[A]
 
   // Overridden methods from IterableLike and SeqLike or overloaded variants of such methods
 
-  override def ++[B >: A, That](that: GenTraversableOnce[B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
+  override def ++[B >: A, That](that: GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[List[A], B, That]): That =
     if (bf eq List.ReusableCBF) (this ::: that.seq.toList).asInstanceOf[That]
     else super.++(that)
 
@@ -319,7 +319,7 @@ sealed abstract class List[+A] extends AbstractSeq[A]
   }
 
   @noinline // TODO - fix optimizer bug that requires noinline for map; applied here to be safe (see SI-8334)
-  final override def flatMap[B, That](@plocal f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
+  final override def flatMap[B, That](@plocal f: A => GenTraversableOnce[Any, B])(implicit bf: CanBuildFrom[List[A], B, That]): That = {
     if (bf eq List.ReusableCBF) {
       if (this eq Nil) Nil.asInstanceOf[That] else {
         var rest = this
@@ -425,7 +425,7 @@ case object Nil extends List[Nothing] {
     throw new UnsupportedOperationException("tail of empty list")
   // Removal of equals method here might lead to an infinite recursion similar to IntMap.equals.
   override def equals(that: Any) = that match {
-    case that1: scala.collection.GenSeq[_] => that1.isEmpty
+    case that1: scala.collection.GenSeq[_, _] => that1.isEmpty
     case _ => false
   }
 }

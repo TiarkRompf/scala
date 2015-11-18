@@ -77,9 +77,9 @@ import generic._
   */
 @SerialVersionUID(-7308240733518833071L)
 @deprecated("Low-level linked lists are deprecated due to idiosyncrasies in interface and incomplete features.", "2.11.0")
-class LinkedList[A]() extends AbstractSeq[A]
-                         with LinearSeq[A]
-                         with GenericTraversableTemplate[A, LinkedList]
+class LinkedList[A]() extends AbstractSeq[Any, A]
+                         with LinearSeq[Any, A]
+                         with GenericTraversableTemplate[Any, A, LinkedList]
                          with LinkedListLike[A, LinkedList[A]]
                          with Serializable {
   next = this
@@ -107,7 +107,7 @@ class LinkedList[A]() extends AbstractSeq[A]
     }
   }
 
-  override def companion: GenericCompanion[LinkedList] = LinkedList
+  override def companion: GenericCompanion[Any, LinkedList] = LinkedList
 }
 
 /** $factoryInfo

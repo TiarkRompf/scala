@@ -142,7 +142,7 @@ extends TrieMapIterator[K, V](lev, ct, mustInit)
     super.next()
   }
 
-  def split: Seq[IterableSplitter[(K, V)]] = subdivide().asInstanceOf[Seq[IterableSplitter[(K, V)]]]
+  def split: Seq[Any, IterableSplitter[(K, V)]] = subdivide().asInstanceOf[Seq[Any, IterableSplitter[(K, V)]]]
 
   override def isRemainingCheap = false
 

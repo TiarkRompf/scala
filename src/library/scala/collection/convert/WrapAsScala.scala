@@ -66,7 +66,7 @@ trait WrapAsScala {
    * @param i The Iterable to be converted.
    * @return A Scala Iterable view of the argument.
    */
-  implicit def iterableAsScalaIterable[A](i: jl.Iterable[A]): Iterable[A] = i match {
+  implicit def iterableAsScalaIterable[A](i: jl.Iterable[Any, A]): Iterable[Any, A] = i match {
     case IterableWrapper(wrapped) => wrapped
     case _ => JIterableWrapper(i)
   }
@@ -81,7 +81,7 @@ trait WrapAsScala {
    * @param i The Collection to be converted.
    * @return A Scala Iterable view of the argument.
    */
-  implicit def collectionAsScalaIterable[A](i: ju.Collection[A]): Iterable[A] = i match {
+  implicit def collectionAsScalaIterable[A](i: ju.Collection[A]): Iterable[Any, A] = i match {
     case IterableWrapper(wrapped) => wrapped
     case _ => JCollectionWrapper(i)
   }
@@ -133,13 +133,13 @@ trait WrapAsScala {
    * If the Java `Map` was previously obtained from an implicit or
    * explicit call of `mapAsScalaMap(scala.collection.mutable.Map)` then
    * the original Scala Map will be returned.
-   * 
+   *
    * If the wrapped map is synchronized (e.g. from `java.util.Collections.synchronizedMap`),
-   * it is your responsibility to wrap all 
+   * it is your responsibility to wrap all
    * non-atomic operations with `underlying.synchronized`.
    * This includes `get`, as `java.util.Map`'s API does not allow for an
    * atomic `get` when `null` values may be present.
-   * 
+   *
    * @param m The Map to be converted.
    * @return A Scala mutable Map view of the argument.
    */

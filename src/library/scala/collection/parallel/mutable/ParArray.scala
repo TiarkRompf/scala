@@ -63,7 +63,7 @@ self =>
 
   @transient private var array: Array[Any] = arrayseq.array.asInstanceOf[Array[Any]]
 
-  override def companion: GenericCompanion[ParArray] with GenericParCompanion[ParArray] = ParArray
+  override def companion: GenericCompanion[Any, ParArray] with GenericParCompanion[ParArray] = ParArray
 
   def this(sz: Int) = this {
     require(sz >= 0)
@@ -97,7 +97,7 @@ self =>
 
     def dup = new ParArrayIterator(i, until, arr)
 
-    def psplit(sizesIncomplete: Int*): Seq[ParArrayIterator] = {
+    def psplit(sizesIncomplete: Int*): Seq[Any, ParArrayIterator] = {
       var traversed = i
       val total = sizesIncomplete.reduceLeft(_ + _)
       val left = remaining
@@ -112,7 +112,7 @@ self =>
       }
     }
 
-    override def split: Seq[ParArrayIterator] = {
+    override def split: Seq[Any, ParArrayIterator] = {
       val left = remaining
       if (left >= 2) {
         val splitpoint = left / 2
@@ -411,11 +411,11 @@ self =>
       }
     }
 
-    override def flatmap2combiner[S, That](f: T => GenTraversableOnce[S], cb: Combiner[S, That]): Combiner[S, That] = {
+    override def flatmap2combiner[S, That](f: T => GenTraversableOnce[Any, S], cb: Combiner[S, That]): Combiner[S, That] = {
       //val cb = pbf(self.repr)
       while (i < until) {
         val traversable = f(arr(i).asInstanceOf[T])
-        if (traversable.isInstanceOf[Iterable[_]]) cb ++= traversable.asInstanceOf[Iterable[S]].iterator
+        if (traversable.isInstanceOf[Iterable[_, _]]) cb ++= traversable.asInstanceOf[Iterable[Any, S]].iterator
         else cb ++= traversable.seq
         i += 1
       }
@@ -709,7 +709,7 @@ object ParArray extends ParFactory[ParArray] {
     handoff(newarr)
   }
 
-  def fromTraversables[T](xss: GenTraversableOnce[T]*) = {
+  def fromTraversables[T](xss: GenTraversableOnce[Any, T]*) = {
     val cb = ParArrayCombiner[T]()
     for (xs <- xss) {
       cb ++= xs.seq

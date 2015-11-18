@@ -13,7 +13,7 @@ import scala.language.higherKinds
 /**
  * @since 2.8
  */
-trait GenericSetTemplate[A, +CC[X] <: GenSet[X]] extends GenericTraversableTemplate[A, CC] {
+trait GenericSetTemplate[A, +CC[X] <: GenSet[X]] extends GenericTraversableTemplate[Any, A, CC] {
   def empty: CC[A] = companion.empty[A]
 }
 

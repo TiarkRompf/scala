@@ -1,0 +1,111 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import argparse
+from collections import namedtuple
+import errno
+import os, os.path
+import re
+import subprocess
+import sys
+
+def main(args=sys.argv):
+    parser = argparse.ArgumentParser(
+        prog=args[0],
+        description="""""")
+    parser.add_argument(
+        "-v", "--verbose", dest='v', action='count', default=0,
+        help="increase output verbosity (can be repeated)")
+    parser.add_argument("-n", "--dry-run", action='store_true')
+    args = parser.parse_args(args[1:])
+
+    global ARGS; ARGS = args
+    v_print(1, "ARGS:", args)
+
+    src_dirs = (
+        "src/library/scala/collection",
+    )
+
+    for src in get_srcs(src_dirs):
+        # v_print(3, "reading:", src)
+        with open(src + "~" if not args.dry_run else os.devnull, "w") as out:
+            fix_src(src, out)
+
+    # Rename temporary outputs in 2nd pass, to ensure atomicity
+    if not args.dry_run:
+        for src in get_srcs(src_dirs):
+            os.rename(src + "~", src)
+
+    return 0
+
+def get_srcs(dir_rel_paths):
+    for dir_rel_path in dir_rel_paths:
+        dir_path = os.path.join(os.path.dirname(__file__), "..", dir_rel_path)
+        v_print(2, dir_path, file=sys.stderr)
+        for dirpath, dirnames, filenames in os.walk(dir_path):
+            for filename in filenames:
+                # TODO: for now, package.scala is fixed by hand (diff. indent.)
+                if filename.endswith(".scala") and filename != "package.scala":
+                    yield os.path.join(dirpath, filename)
+
+def fix_src(path, out):
+    OUTER_RE = re.compile(r"\b(.*(?:class|trait|object)) ([^ [(]+)((?:\[-?L))?")
+    Outer = namedtuple("Outer", ["tp", "is_ob", "has_l"])
+    outer = None
+    for line_num, line in enumerate(open(path), 1):
+        out_line = line
+        loc_str = "@ %s:%d" % (path, line_num)
+        m = OUTER_RE.match(line)
+        if m:
+            if outer:
+                raise ValueError("Already inside outer type", outer, loc_str)
+            outer = Outer(
+                is_ob=m.group(1).endswith("object"),
+                tp=m.group(2),
+                has_l=m.group(3) is not None)
+            body_beg = 0
+            v_print(2, "<", outer, loc_str)
+
+            if outer.has_l:
+                out_line = OUTER_RE.sub(r"\1 \2[-L", out_line)
+        if outer:
+            m_tp_l = re.search(r"(\w+)\[(?:-)?L,", line)
+            if m_tp_l and (m_tp_l.group(1) != outer.tp or body_beg):
+                if not outer.has_l:
+                    out_line = line.replace(
+                        "[L, _", "[_, _").replace(
+                            "[L,", "[Any,")
+
+            # {Map,Set,Par} -like are not parametrized with type param L
+            if all(s not in outer.tp for s in ("Map", "Set", "Par")):
+                if not body_beg:
+                    out_line = re.sub(r"CC\[([^JL])", r"CC[J, \1", out_line)
+                elif outer.has_l:
+                    out_line = re.sub(r"CC\[([^JL])", r"CC[L, \1", out_line)
+                else:
+                    out_line = re.sub(r"CC\[(?!/\*\*/)", "CC[/**/_, ", out_line)
+
+            if not body_beg and "{" in line:
+                body_beg = line_num
+
+        if line.startswith("}") or (outer and (
+                (body_beg == line_num and line.rstrip().endswith("}")) or
+                (not body_beg and not line.rstrip()))):
+            v_print(3, ">", outer, loc_str)
+            if outer is None:
+                raise ValueError("No outer type to close", loc_str)
+            outer = None
+
+        if out_line != line:
+            v_print(1, loc_str)
+            v_print(1, "-", line, end="")
+            if out_line is not None: v_print(1, "+", out_line, end="")
+
+        if out_line is not None: print(out_line, end="", file=out)
+
+def v_print(min_verbosity, *args, **kwargs):
+    if ARGS.v >= min_verbosity:
+        print(*args, **kwargs)
+
+if __name__ == '__main__': sys.exit(main())

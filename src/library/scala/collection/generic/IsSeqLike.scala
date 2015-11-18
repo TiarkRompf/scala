@@ -11,7 +11,7 @@ package collection
 package generic
 
 /** Type class witnessing that a collection representation type `Repr` has
-  * elements of type `A` and has a conversion to `SeqLike[A, Repr]`.
+  * elements of type `A` and has a conversion to `SeqLike[L, A, Repr]`.
   *
   * This type enables simple enrichment of `Seq`s with extension methods which
   * can make full use of the mechanics of the Scala collections framework in
@@ -19,7 +19,7 @@ package generic
   *
   * Example usage:
   * {{{
-  *    class FilterMapImpl[A, Repr](val r: SeqLike[A, Repr]) {
+  *    class FilterMapImpl[A, Repr](val r: SeqLike[L, A, Repr]) {
   *      final def filterMap[B, That](f: A => Option[B])(implicit cbf: CanBuildFrom[Repr, B, That]): That =
   *        r.flatMap(f(_))
   *    }
@@ -37,8 +37,8 @@ package generic
 trait IsSeqLike[Repr] {
   /** The type of elements we can traverse over. */
   type A
-  /** A conversion from the representation type `Repr` to a `SeqLike[A,Repr]`. */
-  val conversion: Repr => SeqLike[A, Repr]
+  /** A conversion from the representation type `Repr` to a `SeqLike[Any, A,Repr]`. */
+  val conversion: Repr => SeqLike[Any, A, Repr]
 }
 
 object IsSeqLike {
@@ -47,10 +47,10 @@ object IsSeqLike {
   implicit val stringRepr: IsSeqLike[String] { type A = Char } =
     new IsSeqLike[String] {
       type A = Char
-      val conversion = implicitly[String => SeqLike[Char, String]]
+      val conversion = implicitly[String => SeqLike[Any, Char, String]]
     }
 
-  implicit def seqLikeRepr[C[_], A0](implicit conv: C[A0] => SeqLike[A0,C[A0]]): IsSeqLike[C[A0]] { type A = A0 } =
+  implicit def seqLikeRepr[C[_], A0](implicit conv: C[A0] => SeqLike[Any, A0,C[A0]]): IsSeqLike[C[A0]] { type A = A0 } =
     new IsSeqLike[C[A0]] {
       type A = A0
       val conversion = conv

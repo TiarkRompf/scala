@@ -54,7 +54,7 @@ import scala.annotation.migration
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
-trait GenTraversableLike[+A, +Repr] extends Any with GenTraversableOnce[A] with Parallelizable[A, parallel.ParIterable[A]] {
+trait GenTraversableLike[-L, +A, +Repr] extends Any with GenTraversableOnce[L, A] with Parallelizable[A, parallel.ParIterable[A]] {
 
   def repr: Repr
 
@@ -220,26 +220,26 @@ trait GenTraversableLike[+A, +Repr] extends Any with GenTraversableOnce[A] with 
    *  @return       a new collection of type `That` resulting from applying the given collection-valued function
    *                `f` to each element of this $coll and concatenating the results.
    *
-   *  @usecase def flatMap[B](f: A => GenTraversableOnce[B]): $Coll[B]
+   *  @usecase def flatMap[B](f: A => GenTraversableOnce[L, B]): $Coll[B]
    *    @inheritdoc
    *
    *    For example:
    *
    *    {{{
-   *      def getWords(lines: Seq[String]): Seq[String] = lines flatMap (line => line split "\\W+")
+   *      def getWords(lines: Seq[L, String]): Seq[L, String] = lines flatMap (line => line split "\\W+")
    *    }}}
    *
    *    The type of the resulting collection is guided by the static type of $coll. This might
    *    cause unexpected results sometimes. For example:
    *
    *    {{{
-   *      // lettersOf will return a Seq[Char] of likely repeated letters, instead of a Set
-   *      def lettersOf(words: Seq[String]) = words flatMap (word => word.toSet)
+   *      // lettersOf will return a Seq[L, Char] of likely repeated letters, instead of a Set
+   *      def lettersOf(words: Seq[L, String]) = words flatMap (word => word.toSet)
    *
    *      // lettersOf will return a Set[Char], not a Seq
-   *      def lettersOf(words: Seq[String]) = words.toSet flatMap (word => word.toSeq)
+   *      def lettersOf(words: Seq[L, String]) = words.toSet flatMap (word => word.toSeq)
    *
-   *      // xs will be an Iterable[Int]
+   *      // xs will be an Iterable[L, Int]
    *      val xs = Map("a" -> List(11,111), "b" -> List(22,222)).flatMap(_._2)
    *
    *      // ys will be a Map[Int, Int]
@@ -249,7 +249,7 @@ trait GenTraversableLike[+A, +Repr] extends Any with GenTraversableOnce[A] with 
    *    @return       a new $coll resulting from applying the given collection-valued function
    *                  `f` to each element of this $coll and concatenating the results.
    */
-  def flatMap[B, That](f: A => GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That
+  def flatMap[B, That](f: A => GenTraversableOnce[L, B])(implicit bf: CanBuildFrom[Repr, B, That]): That
 
   /** Returns a new $coll containing the elements from the left hand operand followed by the elements from the
    *  right hand operand. The element type of the $coll is the most specific superclass encompassing
@@ -262,7 +262,7 @@ trait GenTraversableLike[+A, +Repr] extends Any with GenTraversableOnce[A] with 
    *  @return       a new collection of type `That` which contains all elements
    *                of this $coll followed by all elements of `that`.
    *
-   *  @usecase def ++[B](that: GenTraversableOnce[B]): $Coll[B]
+   *  @usecase def ++[B](that: GenTraversableOnce[L, B]): $Coll[B]
    *    @inheritdoc
    *
    *    Example:
@@ -286,7 +286,7 @@ trait GenTraversableLike[+A, +Repr] extends Any with GenTraversableOnce[A] with 
    *    @return       a new $coll which contains all elements of this $coll
    *                  followed by all elements of `that`.
    */
-  def ++[B >: A, That](that: GenTraversableOnce[B])(implicit bf: CanBuildFrom[Repr, B, That]): That
+  def ++[B >: A, That](that: GenTraversableOnce[L, B])(implicit bf: CanBuildFrom[Repr, B, That]): That
 
   /** Selects all elements of this $coll which satisfy a predicate.
    *

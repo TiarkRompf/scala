@@ -56,7 +56,7 @@ import parallel.ParSet
  *  @define mayNotTerminateInf
  */
 trait SetLike[A, +This <: SetLike[A, This] with Set[A]]
-extends IterableLike[A, This]
+extends IterableLike[Any, A, This]
    with GenSetLike[A, This]
    with Subtractable[A, This]
    with Parallelizable[A, ParSet[A]]
@@ -78,7 +78,7 @@ self =>
   protected[this] override def parCombiner = ParSet.newCombiner[A]
 
   /* Overridden for efficiency. */
-  override def toSeq: Seq[A] = toBuffer[A]
+  override def toSeq: Seq[Any, A] = toBuffer[A]
   override def toBuffer[A1 >: A]: mutable.Buffer[A1] = {
     val result = new mutable.ArrayBuffer[A1](size)
     copyToBuffer(result)
@@ -138,7 +138,7 @@ self =>
    *  @param elems     the collection containing the elements to add.
    *  @return a new $coll with the given elements added, omitting duplicates.
    */
-  def ++ (elems: GenTraversableOnce[A]): This = (repr /: elems.seq)(_ + _)
+  def ++ (elems: GenTraversableOnce[Any, A]): This = (repr /: elems.seq)(_ + _)
 
   /** Creates a new set with a given element removed from this set.
    *

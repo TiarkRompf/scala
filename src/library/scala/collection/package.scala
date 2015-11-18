@@ -51,7 +51,7 @@ package scala
  * like so:
  * {{{
  * scala> val seq = Seq(1,2,3,4,1)
- * seq: Seq[Int] = List(1, 2, 3, 4, 1)
+ * seq: Seq[L, Int] = List(1, 2, 3, 4, 1)
  *
  * scala> val set = Set(1,2,3,4,1)
  * set: scala.collection.immutable.Set[Int] = Set(1, 2, 3, 4)

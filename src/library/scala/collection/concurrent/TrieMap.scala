@@ -569,7 +569,7 @@ private[collection] final class CNode[K, V](val bitmap: Int, val array: Array[Ba
   private[concurrent] def string(lev: Int): String = "CNode %x\n%s".format(bitmap, array.map(_.string(lev + 1)).mkString("\n"))
 
   /* quiescently consistent - don't call concurrently to anything involving a GCAS!! */
-  private def collectElems: Seq[(K, V)] = array flatMap {
+  private def collectElems: Seq[Any, (K, V)] = array flatMap {
     case sn: SNode[K, V] => Some(sn.kvPair)
     case in: INode[K, V] => in.mainnode match {
       case tn: TNode[K, V] => Some(tn.kvPair)
@@ -578,7 +578,7 @@ private[collection] final class CNode[K, V](val bitmap: Int, val array: Array[Ba
     }
   }
 
-  private def collectLocalElems: Seq[String] = array flatMap {
+  private def collectLocalElems: Seq[Any, String] = array flatMap {
     case sn: SNode[K, V] => Some(sn.kvPair._2.toString)
     case in: INode[K, V] => Some(in.toString.drop(14) + "(" + in.gen + ")")
   }
@@ -887,7 +887,7 @@ extends scala.collection.concurrent.Map[K, V]
    *
    *  If the specified mapping function throws an exception,
    *  that exception is rethrown.
-   *  
+   *
    *  Note: This method will invoke op at most once.
    *  However, `op` may be invoked without the result being added to the map if
    *  a concurrent process is also trying to add a value corresponding to the
@@ -1051,7 +1051,7 @@ private[collection] class TrieMapIterator[K, V](var level: Int, private var ct: 
   /** Returns a sequence of iterators over subsets of this iterator.
    *  It's used to ease the implementation of splitters for a parallel version of the TrieMap.
    */
-  protected def subdivide(): Seq[Iterator[(K, V)]] = if (subiter ne null) {
+  protected def subdivide(): Seq[Any, Iterator[(K, V)]] = if (subiter ne null) {
     // the case where an LNode is being iterated
     val it = newIterator(level + 1, ct, _mustInit = false)
     it.depth = -1

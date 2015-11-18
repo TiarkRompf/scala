@@ -49,7 +49,7 @@ class LinkedHashSet[A] extends AbstractSet[A]
   override protected type LT = Any
   override protected type plocal = local[LT]
 
-  override def companion: GenericCompanion[LinkedHashSet] = LinkedHashSet
+  override def companion: GenericCompanion[Any, LinkedHashSet] = LinkedHashSet
 
   type Entry = LinkedHashSet.Entry[A]
 

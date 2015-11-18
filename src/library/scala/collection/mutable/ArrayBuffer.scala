@@ -48,7 +48,7 @@ import parallel.mutable.ParArray
 class ArrayBuffer[A](override protected val initialSize: Int)
   extends AbstractBuffer[A]
      with Buffer[A]
-     with GenericTraversableTemplate[A, ArrayBuffer]
+     with GenericTraversableTemplate[Any, A, ArrayBuffer]
      with BufferLike[A, ArrayBuffer[A]]
      with IndexedSeqOptimized[A, ArrayBuffer[A]]
      with Builder[A, ArrayBuffer[A]]
@@ -56,7 +56,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
      with CustomParallelizable[A, ParArray[A]]
      with Serializable {
 
-  override def companion: GenericCompanion[ArrayBuffer] = ArrayBuffer
+  override def companion: GenericCompanion[Any, ArrayBuffer] = ArrayBuffer
 
   import scala.collection.Traversable
 
@@ -93,7 +93,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param xs    the traversable object.
    *  @return      the updated buffer.
    */
-  override def ++=(xs: TraversableOnce[A]): this.type = xs match {
+  override def ++=(xs: TraversableOnce[Any, A]): this.type = xs match {
     case v: scala.collection.IndexedSeqLike[_, _] =>
       val n = v.length
       ensureSize(size0 + n)
@@ -125,7 +125,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param xs    the traversable object.
    *  @return      the updated buffer.
    */
-  override def ++=:(xs: TraversableOnce[A]): this.type = { insertAll(0, xs.toTraversable); this }
+  override def ++=:(xs: TraversableOnce[Any, A]): this.type = { insertAll(0, xs.toTraversable); this }
 
   /** Inserts new elements at the index `n`. Opposed to method
    *  `update`, this method will not replace an element with a new
@@ -135,7 +135,7 @@ class ArrayBuffer[A](override protected val initialSize: Int)
    *  @param seq   the traversable object providing all elements to insert.
    *  @throws IndexOutOfBoundsException if `n` is out of bounds.
    */
-  def insertAll(n: Int, seq: Traversable[A]) {
+  def insertAll(n: Int, seq: Traversable[Any, A]) {
     if (n < 0 || n > size0) throw new IndexOutOfBoundsException(n.toString)
     val len = seq.size
     val newSize = size0 + len

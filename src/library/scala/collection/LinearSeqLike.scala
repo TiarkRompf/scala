@@ -12,7 +12,7 @@ package collection
 import immutable.List
 import scala.annotation.tailrec
 
-/** A template trait for linear sequences of type `LinearSeq[A]`.
+/** A template trait for linear sequences of type `LinearSeq[L, A]`.
  *
  *  This trait just implements `iterator` and `corresponds` in terms of `isEmpty, ``head`, and `tail`.
  *  However, see `LinearSeqOptimized` for an implementation trait that overrides many more operations
@@ -27,13 +27,13 @@ import scala.annotation.tailrec
  *  @tparam A    the element type of the $coll
  *  @tparam Repr the type of the actual $coll containing the elements.
  */
-trait LinearSeqLike[+A, +Repr <: LinearSeqLike[A, Repr]] extends SeqLike[A, Repr] {
+trait LinearSeqLike[-L, +A, +Repr <: LinearSeqLike[L, A, Repr]] extends SeqLike[L, A, Repr] {
   self: Repr =>
 
-  override protected[this] def thisCollection: LinearSeq[A] = this.asInstanceOf[LinearSeq[A]]
-  override protected[this] def toCollection(repr: Repr): LinearSeq[A] = repr.asInstanceOf[LinearSeq[A]]
+  override protected[this] def thisCollection: LinearSeq[L, A] = this.asInstanceOf[LinearSeq[L, A]]
+  override protected[this] def toCollection(repr: Repr): LinearSeq[L, A] = repr.asInstanceOf[LinearSeq[L, A]]
 
-  def seq: LinearSeq[A]
+  def seq: LinearSeq[L, A]
 
   override def hashCode()= scala.util.hashing.MurmurHash3.seqHash(seq) // TODO - can we get faster via "linearSeqHash" ?
 
@@ -62,7 +62,7 @@ trait LinearSeqLike[+A, +Repr <: LinearSeqLike[A, Repr]] extends SeqLike[A, Repr
     }
   }
 
-  @tailrec override final def corresponds[B](that: GenSeq[B])(p: (A,B) => Boolean): Boolean = {
+  @tailrec override final def corresponds[B](that: GenSeq[L, B])(p: (A,B) => Boolean): Boolean = {
     if (this.isEmpty) that.isEmpty
     else that.nonEmpty && p(head, that.head) && (tail corresponds that.tail)(p)
   }

@@ -45,7 +45,7 @@ class SynchronizedQueue[A] extends Queue[A] {
    *
    *  @param  xs        a traversable object
    */
-  override def ++=(xs: TraversableOnce[A]): this.type = synchronized[this.type] { super.++=(xs) }
+  override def ++=(xs: TraversableOnce[Any, A]): this.type = synchronized[this.type] { super.++=(xs) }
 
   /** Adds all elements to the queue.
    *
@@ -75,7 +75,7 @@ class SynchronizedQueue[A] extends Queue[A] {
    *  @return    a sequence of all elements in the queue for which
    *             p yields true.
    */
-  override def dequeueAll(p: A => Boolean): Seq[A] = synchronized { super.dequeueAll(p) }
+  override def dequeueAll(p: A => Boolean): Seq[Any, A] = synchronized { super.dequeueAll(p) }
 
   /** Returns the first element in the queue, or throws an error if there
    *  is no element contained in the queue.

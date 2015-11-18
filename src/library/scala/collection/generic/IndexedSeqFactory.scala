@@ -16,7 +16,7 @@ import language.higherKinds
  *
  *  @since 2.11
  */
-abstract class IndexedSeqFactory[CC[X] <: IndexedSeq[X] with GenericTraversableTemplate[X, CC]] extends SeqFactory[CC] {
+abstract class IndexedSeqFactory[CC[J, X] <: IndexedSeq[X] with GenericTraversableTemplate[Any, X, CC]] extends SeqFactory[CC] {
   override def ReusableCBF: GenericCanBuildFrom[Nothing] =
     scala.collection.IndexedSeq.ReusableCBF.asInstanceOf[GenericCanBuildFrom[Nothing]]
 }

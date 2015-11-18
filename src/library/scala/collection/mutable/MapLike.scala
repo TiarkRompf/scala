@@ -139,7 +139,7 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
    *  @return       a new map containing mappings of this map and those provided by `xs`.
    */
   @migration("`++` creates a new map. Use `++=` to add an element to this map and return that map itself.", "2.8.0")
-  override def ++[B1 >: B](xs: GenTraversableOnce[(A, B1)]): Map[A, B1] =
+  override def ++[B1 >: B](xs: GenTraversableOnce[Any, (A, B1)]): Map[A, B1] =
     clone().asInstanceOf[Map[A, B1]] ++= xs.seq
 
   /** Removes a key from this map, returning the value associated previously
@@ -181,7 +181,7 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
    *
    *  Concurrent map implementations may evaluate the expression `op`
    *  multiple times, or may evaluate `op` without inserting the result.
-   *  
+   *
    *  @param  key the key to test
    *  @param  op  the computation yielding the value to associate with `key`, if
    *              `key` is previously unbound.
@@ -248,5 +248,5 @@ trait MapLike[A, B, +This <: MapLike[A, B, This] with Map[A, B]]
    *                  with a key equal to a key from `xs`.
    */
   @migration("`--` creates a new map. Use `--=` to remove an element from this map and return that map itself.", "2.8.0")
-  override def --(xs: GenTraversableOnce[A]): This = clone() --= xs.seq
+  override def --(xs: GenTraversableOnce[Any, A]): This = clone() --= xs.seq
 }

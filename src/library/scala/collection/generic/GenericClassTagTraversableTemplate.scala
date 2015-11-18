@@ -21,12 +21,12 @@ import scala.reflect.ClassTag
  *  @author Aleksandar Prokopec
  *  @since 2.8
  */
-trait GenericClassTagTraversableTemplate[+A, +CC[X] <: Traversable[X]] extends HasNewBuilder[A, CC[A] @uncheckedVariance] {
+trait GenericClassTagTraversableTemplate[+A, +CC[J, X] <: Traversable[Any, X]] extends HasNewBuilder[A, CC[J, A] @uncheckedVariance] {
   implicit protected[this] val tag: ClassTag[A]
   def classTagCompanion: GenericClassTagCompanion[CC]
-  def genericClassTagBuilder[B](implicit tag: ClassTag[B]): Builder[B, CC[B]] = classTagCompanion.newBuilder[B]
+  def genericClassTagBuilder[B](implicit tag: ClassTag[B]): Builder[B, CC[/**/_, B]] = classTagCompanion.newBuilder[B]
   @deprecated("use classTagCompanion instead", "2.10.0")
   def classManifestCompanion: GenericClassManifestCompanion[CC] = classTagCompanion
   @deprecated("use genericClassTagBuilder instead", "2.10.0")
-  def genericClassManifestBuilder[B](implicit manifest: ClassManifest[B]): Builder[B, CC[B]] = genericClassTagBuilder[B](manifest)
+  def genericClassManifestBuilder[B](implicit manifest: ClassManifest[B]): Builder[B, CC[/**/_, B]] = genericClassTagBuilder[B](manifest)
 }

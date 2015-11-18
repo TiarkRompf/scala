@@ -43,9 +43,9 @@ import generic._
  */
 @deprecated("Low-level linked lists are deprecated due to idiosyncrasies in interface and incomplete features.", "2.11.0")
 @SerialVersionUID(-8144992287952814767L)
-class DoubleLinkedList[A]() extends AbstractSeq[A]
-                            with LinearSeq[A]
-                            with GenericTraversableTemplate[A, DoubleLinkedList]
+class DoubleLinkedList[A]() extends AbstractSeq[Any, A]
+                            with LinearSeq[Any, A]
+                            with GenericTraversableTemplate[Any, A, DoubleLinkedList]
                             with DoubleLinkedListLike[A, DoubleLinkedList[A]]
                             with Serializable {
   next = this
@@ -64,7 +64,7 @@ class DoubleLinkedList[A]() extends AbstractSeq[A]
     }
   }
 
-  override def companion: GenericCompanion[DoubleLinkedList] = DoubleLinkedList
+  override def companion: GenericCompanion[Any, DoubleLinkedList] = DoubleLinkedList
 
   // Accurately clone this collection.  See SI-6296
   override def clone(): DoubleLinkedList[A] = {

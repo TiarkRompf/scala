@@ -30,10 +30,10 @@ import generic._
  *  Sequences are special cases of iterable collections of class `Iterable`.
  *  Unlike iterables, sequences always have a defined order of elements.
  */
-trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equals with Parallelizable[A, parallel.ParSeq[A]] {
+trait GenSeqLike[-L, +A, +Repr] extends Any with GenIterableLike[L, A, Repr] with Equals with Parallelizable[A, parallel.ParSeq[A]] {
   type LT
 
-  def seq: Seq[A]
+  def seq: Seq[L, A]
 
   /** Selects an element by its index in the $coll.
    *
@@ -65,7 +65,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
 
   /** Tests whether this $coll contains given index.
    *
-   *  The implementations of methods `apply` and `isDefinedAt` turn a `Seq[A]` into
+   *  The implementations of methods `apply` and `isDefinedAt` turn a `Seq[L, A]` into
    *  a `PartialFunction[Int, A]`.
    *
    * @param    idx     the index to test
@@ -228,7 +228,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    * @param  that    the sequence to test
    * @return `true` if this collection has `that` as a prefix, `false` otherwise.
    */
-  def startsWith[B](that: GenSeq[B]): Boolean = startsWith(that, 0)
+  def startsWith[B](that: GenSeq[L, B]): Boolean = startsWith(that, 0)
 
   /** Tests whether this $coll contains the given sequence at a given index.
    *
@@ -240,14 +240,14 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    * @return `true` if the sequence `that` is contained in this $coll at
    *         index `offset`, otherwise `false`.
    */
-  def startsWith[B](that: GenSeq[B], offset: Int): Boolean
+  def startsWith[B](that: GenSeq[L, B], offset: Int): Boolean
 
   /** Tests whether this $coll ends with the given sequence.
    *  $willNotTerminateInf
    *  @param  that    the sequence to test
    *  @return `true` if this $coll has `that` as a suffix, `false` otherwise.
    */
-  def endsWith[B](that: GenSeq[B]): Boolean
+  def endsWith[B](that: GenSeq[L, B]): Boolean
 
   /** Produces a new $coll where a slice of elements in this $coll is replaced by another sequence.
    *
@@ -261,14 +261,14 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                   except that `replaced` elements starting from `from` are replaced
    *                   by `patch`.
    *
-   *  @usecase def patch(from: Int, that: GenSeq[A], replaced: Int): $Coll[A]
+   *  @usecase def patch(from: Int, that: GenSeq[L, A], replaced: Int): $Coll[A]
    *    @inheritdoc
    *
    *    @return          a new $coll consisting of all elements of this $coll
    *                     except that `replaced` elements starting from `from` are replaced
    *                     by `patch`.
    */
-  def patch[B >: A, That](from: Int, patch: GenSeq[B], replaced: Int)(implicit bf: CanBuildFrom[Repr, B, That]): That
+  def patch[B >: A, That](from: Int, patch: GenSeq[L, B], replaced: Int)(implicit bf: CanBuildFrom[Repr, B, That]): That
 
   /** A copy of this $coll with one single replaced element.
    *  @param  index  the position of the replacement
@@ -382,9 +382,9 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                  `p(x, y)` is `true` for all corresponding elements `x` of this $coll
    *                  and `y` of `that`, otherwise `false`.
    */
-  def corresponds[B](that: GenSeq[B])(p: (A, B) => Boolean): Boolean
+  def corresponds[B](that: GenSeq[L, B])(p: (A, B) => Boolean): Boolean
 
-  def toSeq: GenSeq[A]
+  def toSeq: GenSeq[L, A]
 
   /** Produces a new sequence which contains all elements of this $coll and also all elements of
    *  a given sequence. `xs union ys`  is equivalent to `xs ++ ys`.
@@ -396,7 +396,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *  @return       a new collection of type `That` which contains all elements of this $coll
    *                followed by all elements of `that`.
    *
-   *  @usecase def union(that: GenSeq[A]): $Coll[A]
+   *  @usecase def union(that: GenSeq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    Another way to express this
@@ -408,7 +408,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *    @return       a new $coll which contains all elements of this $coll
    *                  followed by all elements of `that`.
    */
-  def union[B >: A, That](that: GenSeq[B])(implicit bf: CanBuildFrom[Repr, B, That]): That = this ++ that
+  def union[B >: A, That](that: GenSeq[L, B])(implicit bf: CanBuildFrom[Repr, B, That]): That = this ++ that
 
   /** Computes the multiset difference between this $coll and another sequence.
    *
@@ -420,7 +420,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                part of the result, but any following occurrences will.
    *
-   *  @usecase def diff(that: GenSeq[A]): $Coll[A]
+   *  @usecase def diff(that: GenSeq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    $willNotTerminateInf
@@ -431,7 +431,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                  ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                  part of the result, but any following occurrences will.
    */
-  def diff[B >: A](that: GenSeq[B]): Repr
+  def diff[B >: A](that: GenSeq[L, B]): Repr
 
   /** Computes the multiset intersection between this $coll and another sequence.
    *
@@ -443,7 +443,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                in the result, but any following occurrences will be omitted.
    *
-   *  @usecase def intersect(that: GenSeq[A]): $Coll[A]
+   *  @usecase def intersect(that: GenSeq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    $mayNotTerminateInf
@@ -454,7 +454,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *                  ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                  in the result, but any following occurrences will be omitted.
    */
-  def intersect[B >: A](that: GenSeq[B]): Repr
+  def intersect[B >: A](that: GenSeq[L, B]): Repr
 
   /** Builds a new $coll from this $coll without any duplicate elements.
    *  $willNotTerminateInf
@@ -475,7 +475,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
    *            this sequence in the same order, `false` otherwise
    */
   override def equals(that: Any): Boolean = that match {
-    case that: GenSeq[_] => (that canEqual this) && (this sameElements that)
+    case that: GenSeq[L, _] => (that canEqual this) && (this sameElements that)
     case _               => false
   }
 

@@ -51,7 +51,7 @@ trait PreciseSplitter[+T] extends Splitter[T] {
    *  @param sizes   the sizes used to split this split iterator into iterators that traverse disjunct subsets
    *  @return        a sequence of disjunct subsequence iterators of this parallel iterator
    */
-  def psplit(sizes: Int*): Seq[PreciseSplitter[T]]
+  def psplit(sizes: Int*): Seq[Any, PreciseSplitter[T]]
 
-  def split: Seq[PreciseSplitter[T]]
+  def split: Seq[Any, PreciseSplitter[T]]
 }

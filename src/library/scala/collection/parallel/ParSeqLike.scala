@@ -42,8 +42,8 @@ import scala.collection.parallel.ParallelCollectionImplicits._
  *  @author Aleksandar Prokopec
  *  @since 2.9
  */
-trait ParSeqLike[+T, +Repr <: ParSeq[T], +Sequential <: Seq[T] with SeqLike[T, Sequential]]
-extends scala.collection.GenSeqLike[T, Repr]
+trait ParSeqLike[+T, +Repr <: ParSeq[T], +Sequential <: Seq[Any, T] with SeqLike[Any, T, Sequential]]
+extends scala.collection.GenSeqLike[Any, T, Repr]
    with ParIterableLike[T, Repr, Sequential] {
 self =>
 
@@ -169,7 +169,7 @@ self =>
    *  @param offset  the starting offset for the search
    *  @return        `true` if there is a sequence `that` starting at `offset` in this sequence, `false` otherwise
    */
-  def startsWith[S](that: GenSeq[S], offset: Int): Boolean = that ifParSeq { pthat =>
+  def startsWith[S](that: GenSeq[Any, S], offset: Int): Boolean = that ifParSeq { pthat =>
     if (offset < 0 || offset >= length) offset == length && pthat.length == 0
     else if (pthat.length == 0) true
     else if (pthat.length > length - offset) false
@@ -181,7 +181,7 @@ self =>
     }
   } otherwise seq.startsWith(that, offset)
 
-  override def sameElements[U >: T](that: GenIterable[U]): Boolean = that ifParSeq { pthat =>
+  override def sameElements[U >: T](that: GenIterable[Any, U]): Boolean = that ifParSeq { pthat =>
     val ctx = new DefaultSignalling with VolatileAbort
     length == pthat.length && tasksupport.executeAndWaitResult(new SameElements(splitter assign ctx, pthat.splitter))
   } otherwise seq.sameElements(that)
@@ -194,7 +194,7 @@ self =>
    *  @param that     the sequence to test
    *  @return         `true` if this $coll has `that` as a suffix, `false` otherwise
    */
-  def endsWith[S](that: GenSeq[S]): Boolean = that ifParSeq { pthat =>
+  def endsWith[S](that: GenSeq[Any, S]): Boolean = that ifParSeq { pthat =>
     if (that.length == 0) true
     else if (that.length > length) false
     else {
@@ -204,7 +204,7 @@ self =>
     }
   } otherwise seq.endsWith(that)
 
-  def patch[U >: T, That](from: Int, patch: GenSeq[U], replaced: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
+  def patch[U >: T, That](from: Int, patch: GenSeq[Any, U], replaced: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
     val realreplaced = replaced min (length - from)
     if (patch.isParSeq && bf(repr).isCombiner && (size - realreplaced + patch.size) > MIN_FOR_COPY) {
       val that = patch.asParSeq
@@ -222,7 +222,7 @@ self =>
     } else patch_sequential(from, patch.seq, replaced)
   }
 
-  private def patch_sequential[U >: T, That](fromarg: Int, patch: Seq[U], r: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
+  private def patch_sequential[U >: T, That](fromarg: Int, patch: Seq[Any, U], r: Int)(implicit bf: CanBuildFrom[Repr, U, That]): That = {
     val from = 0 max fromarg
     val b = bf(repr)
     val repl = (r min (length - from)) max 0
@@ -256,7 +256,7 @@ self =>
     patch(length, new immutable.Repetition(elem, len - length), 0)
   } else patch(length, Nil, 0)
 
-  override def zip[U >: T, S, That](that: GenIterable[S])(implicit bf: CanBuildFrom[Repr, (U, S), That]): That = if (bf(repr).isCombiner && that.isParSeq) {
+  override def zip[U >: T, S, That](that: GenIterable[Any, S])(implicit bf: CanBuildFrom[Repr, (U, S), That]): That = if (bf(repr).isCombiner && that.isParSeq) {
     val thatseq = that.asParSeq
     tasksupport.executeAndWaitResult(
       new Zip(length min thatseq.length, combinerFactory(() => bf(repr).asCombiner), splitter, thatseq.splitter) mapResult {
@@ -277,12 +277,12 @@ self =>
    *                   `p(x, y)` is `true` for all corresponding elements `x` of this $coll
    *                   and `y` of `that`, otherwise `false`
    */
-  def corresponds[S](that: GenSeq[S])(p: (T, S) => Boolean): Boolean = that ifParSeq { pthat =>
+  def corresponds[S](that: GenSeq[Any, S])(p: (T, S) => Boolean): Boolean = that ifParSeq { pthat =>
     val ctx = new DefaultSignalling with VolatileAbort
     length == pthat.length && tasksupport.executeAndWaitResult(new Corresponds(p, splitter assign ctx, pthat.splitter))
   } otherwise seq.corresponds(that)(p)
 
-  def diff[U >: T](that: GenSeq[U]): Repr = sequentially {
+  def diff[U >: T](that: GenSeq[Any, U]): Repr = sequentially {
     _ diff that
   }
 
@@ -296,7 +296,7 @@ self =>
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                in the result, but any following occurrences will be omitted.
    *
-   *  @usecase def intersect(that: Seq[T]): $Coll[T]
+   *  @usecase def intersect(that: Seq[Any, T]): $Coll[T]
    *    @inheritdoc
    *
    *    $mayNotTerminateInf
@@ -307,7 +307,7 @@ self =>
    *                  ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                  in the result, but any following occurrences will be omitted.
    */
-  def intersect[U >: T](that: GenSeq[U]) = sequentially {
+  def intersect[U >: T](that: GenSeq[Any, U]) = sequentially {
     _ intersect that
   }
 

@@ -26,7 +26,7 @@ private[collection] trait Decorators {
   }
 
   /** Generic class containing the `asJavaCollection` converter method */
-  class AsJavaCollection[A](i: Iterable[A]) {
+  class AsJavaCollection[A](i: Iterable[Any, A]) {
     /** Converts a Scala `Iterable` to a Java `Collection` */
     def asJavaCollection: ju.Collection[A] = JavaConversions.asJavaCollection(i)
   }

@@ -20,7 +20,7 @@ import generic._
  */
 trait GenMap[A, +B]
 extends GenMapLike[A, B, GenMap[A, B]]
-   with GenIterable[(A, B)]
+   with GenIterable[Any, (A, B)]
 {
   def seq: Map[A, B]
 

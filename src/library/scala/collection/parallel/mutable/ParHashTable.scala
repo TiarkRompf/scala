@@ -73,7 +73,7 @@ trait ParHashTable[K, Entry >: Null <: HashEntry[K, Entry]] extends scala.collec
 
     def dup = newIterator(idx, until, totalsize, es)
 
-    def split: Seq[IterableSplitter[T]] = if (remaining > 1) {
+    def split: Seq[Any, IterableSplitter[T]] = if (remaining > 1) {
       if (until > idx) {
         // there is at least one more slot for the next iterator
         // divide the rest of the table

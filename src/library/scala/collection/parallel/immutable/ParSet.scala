@@ -29,7 +29,7 @@ extends scala.collection/*.immutable*/.GenSet[T]
 self =>
   override def empty: ParSet[T] = ParHashSet[T]()
 
-  override def companion: GenericCompanion[ParSet] with GenericParCompanion[ParSet] = ParSet
+  override def companion: GenericCompanion[Any, ParSet] with GenericParCompanion[ParSet] = ParSet
 
   override def stringPrefix = "ParSet"
 

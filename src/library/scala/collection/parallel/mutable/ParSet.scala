@@ -24,7 +24,7 @@ extends scala.collection/*.mutable*/.GenSet[T]
    with ParSetLike[T, ParSet[T], scala.collection.mutable.Set[T]]
 {
 self =>
-  override def companion: GenericCompanion[ParSet] with GenericParCompanion[ParSet] = ParSet
+  override def companion: GenericCompanion[Any, ParSet] with GenericParCompanion[ParSet] = ParSet
   override def empty: ParSet[T] = ParHashSet()
   def seq: scala.collection.mutable.Set[T]
 }

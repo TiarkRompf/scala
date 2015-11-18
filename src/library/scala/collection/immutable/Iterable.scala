@@ -22,16 +22,16 @@ import parallel.immutable.ParIterable
  *  @define Coll `immutable.Iterable`
  *  @define coll immutable iterable collection
  */
-trait Iterable[+A] extends Traversable[A]
-//                      with GenIterable[A]
-                      with scala.collection.Iterable[A]
-                      with GenericTraversableTemplate[A, Iterable]
-                      with IterableLike[A, Iterable[A]]
+trait Iterable[-L, +A] extends Traversable[L, A]
+//                      with GenIterable[L, A]
+                      with scala.collection.Iterable[L, A]
+                      with GenericTraversableTemplate[L, A, Iterable]
+                      with IterableLike[L, A, Iterable[L, A]]
                       with Parallelizable[A, ParIterable[A]]
 {
-  override def companion: GenericCompanion[Iterable] = Iterable
+  override def companion: GenericCompanion[L, Iterable] = Iterable
   protected[this] override def parCombiner = ParIterable.newCombiner[A] // if `immutable.IterableLike` gets introduced, please move this there!
-  override def seq: Iterable[A] = this
+  override def seq: Iterable[L, A] = this
 }
 
 /** $factoryInfo
@@ -40,6 +40,6 @@ trait Iterable[+A] extends Traversable[A]
  *  @define coll immutable iterable collection
  */
 object Iterable extends TraversableFactory[Iterable] {
-  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
-  def newBuilder[A]: Builder[A, Iterable[A]] = new mutable.ListBuffer
+  implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Iterable[Any, A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
+  def newBuilder[A]: Builder[A, Iterable[Any, A]] = new mutable.ListBuffer
 }

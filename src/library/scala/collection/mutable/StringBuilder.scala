@@ -29,7 +29,7 @@ import immutable.StringLike
  */
 @SerialVersionUID(0 - 8525408645367278351L)
 final class StringBuilder(private val underlying: JavaStringBuilder)
-      extends AbstractSeq[Char]
+      extends AbstractSeq[Any, Char]
          with java.lang.CharSequence
          with IndexedSeq[Char]
          with StringLike[StringBuilder]
@@ -221,12 +221,12 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
     this
   }
 
-  /** Appends all the Chars in the given Seq[Char] to this sequence.
+  /** Appends all the Chars in the given Seq[Any, Char] to this sequence.
    *
    *  @param  xs  the characters to be appended.
    *  @return     this StringBuilder.
    */
-  def appendAll(xs: TraversableOnce[Char]): StringBuilder = appendAll(xs.toArray)
+  def appendAll(xs: TraversableOnce[Any, Char]): StringBuilder = appendAll(xs.toArray)
 
   /** Appends all the Chars in the given Array[Char] to this sequence.
    *
@@ -333,14 +333,14 @@ final class StringBuilder(private val underlying: JavaStringBuilder)
     this
   }
 
-  /** Inserts the given Seq[Char] into this sequence at the given index.
+  /** Inserts the given Seq[Any, Char] into this sequence at the given index.
    *
    *  @param  index the index at which to insert.
-   *  @param  xs    the Seq[Char].
+   *  @param  xs    the Seq[Any, Char].
    *  @return       this StringBuilder.
    *  @throws StringIndexOutOfBoundsException  if the index is out of bounds.
    */
-  def insertAll(index: Int, xs: TraversableOnce[Char]): StringBuilder = insertAll(index, xs.toArray)
+  def insertAll(index: Int, xs: TraversableOnce[Any, Char]): StringBuilder = insertAll(index, xs.toArray)
 
   /** Inserts the given Array[Char] into this sequence at the given index.
    *

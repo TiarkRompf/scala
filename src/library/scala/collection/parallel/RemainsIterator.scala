@@ -128,11 +128,11 @@ private[collection] trait AugmentedIterableIterator[+T] extends RemainsIterator[
     cb
   }
 
-  def flatmap2combiner[S, That](f: T => GenTraversableOnce[S], cb: Combiner[S, That]): Combiner[S, That] = {
+  def flatmap2combiner[S, That](f: T => GenTraversableOnce[Any, S], cb: Combiner[S, That]): Combiner[S, That] = {
     //val cb = pbf(repr)
     while (hasNext) {
       val traversable = f(next()).seq
-      if (traversable.isInstanceOf[Iterable[_]]) cb ++= traversable.asInstanceOf[Iterable[S]].iterator
+      if (traversable.isInstanceOf[Iterable[_, _]]) cb ++= traversable.asInstanceOf[Iterable[Any, S]].iterator
       else cb ++= traversable
     }
     cb
@@ -391,9 +391,9 @@ self =>
   /** Creates a copy of this iterator. */
   def dup: IterableSplitter[T]
 
-  def split: Seq[IterableSplitter[T]]
+  def split: Seq[Any, IterableSplitter[T]]
 
-  def splitWithSignalling: Seq[IterableSplitter[T]] = {
+  def splitWithSignalling: Seq[Any, IterableSplitter[T]] = {
     val pits = split
     pits foreach { _.signalDelegate = signalDelegate }
     pits
@@ -440,8 +440,8 @@ self =>
     def hasNext = remaining > 0
     def next = { remaining -= 1; self.next() }
     def dup: IterableSplitter[T] = self.dup.take(taken)
-    def split: Seq[IterableSplitter[T]] = takeSeq(self.split) { (p, n) => p.take(n) }
-    protected[this] def takeSeq[PI <: IterableSplitter[T]](sq: Seq[PI])(taker: (PI, Int) => PI) = {
+    def split: Seq[Any, IterableSplitter[T]] = takeSeq(self.split) { (p, n) => p.take(n) }
+    protected[this] def takeSeq[PI <: IterableSplitter[T]](sq: Seq[Any, PI])(taker: (PI, Int) => PI) = {
       val sizes = sq.scanLeft(0)(_ + _.remaining)
       val shortened = for ((it, (from, until)) <- sq zip (sizes.init zip sizes.tail)) yield
         if (until < remaining) it else taker(it, remaining - from)
@@ -469,7 +469,7 @@ self =>
     def next = f(self.next())
     def remaining = self.remaining
     def dup: IterableSplitter[S] = self.dup map f
-    def split: Seq[IterableSplitter[S]] = self.split.map { _ map f }
+    def split: Seq[Any, IterableSplitter[S]] = self.split.map { _ map f }
   }
 
   override def map[S](f: T => S) = new Mapped(f)
@@ -488,7 +488,7 @@ self =>
     def remaining = if (curr eq self) curr.remaining + that.remaining else curr.remaining
     protected def firstNonEmpty = (curr eq self) && curr.hasNext
     def dup: IterableSplitter[U] = self.dup.appendParIterable[U, PI](that)
-    def split: Seq[IterableSplitter[U]] = if (firstNonEmpty) Seq(curr, that) else curr.split
+    def split: Seq[Any, IterableSplitter[U]] = if (firstNonEmpty) Seq(curr, that) else curr.split
   }
 
   def appendParIterable[U >: T, PI <: IterableSplitter[U]](that: PI) = new Appended[U, PI](that)
@@ -499,7 +499,7 @@ self =>
     def next = (self.next(), that.next())
     def remaining = self.remaining min that.remaining
     def dup: IterableSplitter[(T, S)] = self.dup.zipParSeq(that)
-    def split: Seq[IterableSplitter[(T, S)]] = {
+    def split: Seq[Any, IterableSplitter[(T, S)]] = {
       val selfs = self.split
       val sizes = selfs.map(_.remaining)
       val thats = that.psplit(sizes: _*)
@@ -520,7 +520,7 @@ self =>
 
     def remaining = self.remaining max that.remaining
     def dup: IterableSplitter[(U, S)] = self.dup.zipAllParSeq(that, thiselem, thatelem)
-    def split: Seq[IterableSplitter[(U, S)]] = {
+    def split: Seq[Any, IterableSplitter[(U, S)]] = {
       val selfrem = self.remaining
       val thatrem = that.remaining
       val thisit = if (selfrem < thatrem) self.appendParIterable[U, SeqSplitter[U]](repetition[U](thiselem, thatrem - selfrem).splitter) else self
@@ -544,16 +544,16 @@ extends IterableSplitter[T]
 {
 self =>
   def dup: SeqSplitter[T]
-  def split: Seq[SeqSplitter[T]]
-  def psplit(sizes: Int*): Seq[SeqSplitter[T]]
+  def split: Seq[Any, SeqSplitter[T]]
+  def psplit(sizes: Int*): Seq[Any, SeqSplitter[T]]
 
-  override def splitWithSignalling: Seq[SeqSplitter[T]] = {
+  override def splitWithSignalling: Seq[Any, SeqSplitter[T]] = {
     val pits = split
     pits foreach { _.signalDelegate = signalDelegate }
     pits
   }
 
-  def psplitWithSignalling(sizes: Int*): Seq[SeqSplitter[T]] = {
+  def psplitWithSignalling(sizes: Int*): Seq[Any, SeqSplitter[T]] = {
     val pits = psplit(sizes: _*)
     pits foreach { _.signalDelegate = signalDelegate }
     pits
@@ -572,8 +572,8 @@ self =>
 
   class Taken(tk: Int) extends super.Taken(tk) with SeqSplitter[T] {
     override def dup = super.dup.asInstanceOf[SeqSplitter[T]]
-    override def split: Seq[SeqSplitter[T]] = super.split.asInstanceOf[Seq[SeqSplitter[T]]]
-    def psplit(sizes: Int*): Seq[SeqSplitter[T]] = takeSeq(self.psplit(sizes: _*)) { (p, n) => p.take(n) }
+    override def split: Seq[Any, SeqSplitter[T]] = super.split.asInstanceOf[Seq[Any, SeqSplitter[T]]]
+    def psplit(sizes: Int*): Seq[Any, SeqSplitter[T]] = takeSeq(self.psplit(sizes: _*)) { (p, n) => p.take(n) }
   }
   override private[collection] def newTaken(until: Int): Taken = new Taken(until)
   override def take(n: Int): SeqSplitter[T] = newTaken(n)
@@ -581,16 +581,16 @@ self =>
 
   class Mapped[S](f: T => S) extends super.Mapped[S](f) with SeqSplitter[S] {
     override def dup = super.dup.asInstanceOf[SeqSplitter[S]]
-    override def split: Seq[SeqSplitter[S]] = super.split.asInstanceOf[Seq[SeqSplitter[S]]]
-    def psplit(sizes: Int*): Seq[SeqSplitter[S]] = self.psplit(sizes: _*).map { _ map f }
+    override def split: Seq[Any, SeqSplitter[S]] = super.split.asInstanceOf[Seq[Any, SeqSplitter[S]]]
+    def psplit(sizes: Int*): Seq[Any, SeqSplitter[S]] = self.psplit(sizes: _*).map { _ map f }
   }
 
   override def map[S](f: T => S) = new Mapped(f)
 
   class Appended[U >: T, PI <: SeqSplitter[U]](it: PI) extends super.Appended[U, PI](it) with SeqSplitter[U] {
     override def dup = super.dup.asInstanceOf[SeqSplitter[U]]
-    override def split: Seq[SeqSplitter[U]] = super.split.asInstanceOf[Seq[SeqSplitter[U]]]
-    def psplit(sizes: Int*): Seq[SeqSplitter[U]] = if (firstNonEmpty) {
+    override def split: Seq[Any, SeqSplitter[U]] = super.split.asInstanceOf[Seq[Any, SeqSplitter[U]]]
+    def psplit(sizes: Int*): Seq[Any, SeqSplitter[U]] = if (firstNonEmpty) {
       val selfrem = self.remaining
 
       // split sizes
@@ -620,7 +620,7 @@ self =>
 
   class Zipped[S](ti: SeqSplitter[S]) extends super.Zipped[S](ti) with SeqSplitter[(T, S)] {
     override def dup = super.dup.asInstanceOf[SeqSplitter[(T, S)]]
-    override def split: Seq[SeqSplitter[(T, S)]] = super.split.asInstanceOf[Seq[SeqSplitter[(T, S)]]]
+    override def split: Seq[Any, SeqSplitter[(T, S)]] = super.split.asInstanceOf[Seq[Any, SeqSplitter[(T, S)]]]
     def psplit(szs: Int*) = (self.psplit(szs: _*) zip that.psplit(szs: _*)) map { p => p._1 zipParSeq p._2 }
   }
 
@@ -635,12 +635,12 @@ self =>
       val thatit = if (selfrem > thatrem) that.appendParSeq(repetition(thatelem, selfrem - thatrem).splitter) else that
       (thisit, thatit)
     }
-    override def split: Seq[SeqSplitter[(U, S)]] = {
+    override def split: Seq[Any, SeqSplitter[(U, S)]] = {
       val (thisit, thatit) = patchem
       val zipped = thisit zipParSeq thatit
       zipped.split
     }
-    def psplit(sizes: Int*): Seq[SeqSplitter[(U, S)]] = {
+    def psplit(sizes: Int*): Seq[Any, SeqSplitter[(U, S)]] = {
       val (thisit, thatit) = patchem
       val zipped = thisit zipParSeq thatit
       zipped.psplit(sizes: _*)

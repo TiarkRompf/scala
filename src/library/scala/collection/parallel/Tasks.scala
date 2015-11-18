@@ -33,7 +33,7 @@ trait Task[R, +Tp] {
   def shouldSplitFurther: Boolean
 
   /** Splits this task into a list of smaller tasks. */
-  private[parallel] def split: Seq[Task[R, Tp]]
+  private[parallel] def split: Seq[Any, Task[R, Tp]]
 
   /** Read of results of `that` task and merge them into results of this one. */
   private[parallel] def merge(that: Tp @uncheckedVariance) {}
@@ -95,7 +95,7 @@ trait Tasks {
     /** the body of this task - what it executes, how it gets split and how results are merged. */
     val body: Task[R, Tp]
 
-    def split: Seq[WrappedTask[R, Tp]]
+    def split: Seq[Any, WrappedTask[R, Tp]]
     /** Code that gets called after the task gets started - it may spawn other tasks instead of calling `leaf`. */
     def compute()
     /** Start task. */
@@ -143,7 +143,7 @@ trait AdaptiveWorkStealingTasks extends Tasks {
     @volatile var next: WrappedTask[R, Tp] = null
     @volatile var shouldWaitFor = true
 
-    def split: Seq[WrappedTask[R, Tp]]
+    def split: Seq[Any, WrappedTask[R, Tp]]
 
     def compute() = if (body.shouldSplitFurther) {
       internal()

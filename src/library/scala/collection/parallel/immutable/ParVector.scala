@@ -62,12 +62,12 @@ extends ParSeq[T]
   class ParVectorIterator(_start: Int, _end: Int) extends VectorIterator[T](_start, _end) with SeqSplitter[T] {
     def remaining: Int = remainingElementCount
     def dup: SeqSplitter[T] = (new ParVector(remainingVector)).splitter
-    def split: Seq[ParVectorIterator] = {
+    def split: Seq[Any, ParVectorIterator] = {
       val rem = remaining
       if (rem >= 2) psplit(rem / 2, rem - rem / 2)
       else Seq(this)
     }
-    def psplit(sizes: Int*): Seq[ParVectorIterator] = {
+    def psplit(sizes: Int*): Seq[Any, ParVectorIterator] = {
       var remvector = remainingVector
       val splitted = new ArrayBuffer[Vector[T]]
       for (sz <- sizes) {

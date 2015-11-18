@@ -15,7 +15,7 @@ import generic._
 import parallel.ParSeq
 import scala.math.{ min, max, Ordering }
 
-/** A template trait for sequences of type `Seq[A]`
+/** A template trait for sequences of type `Seq[L, A]`
  *  $seqInfo
  *
  *  @define seqInfo
@@ -59,12 +59,12 @@ import scala.math.{ min, max, Ordering }
  *  @define orderDependent
  *  @define orderDependentFold
  */
-trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[A, Repr] with Parallelizable[A, ParSeq[A]] { self =>
+trait SeqLike[-L, +A, +Repr] extends Any with IterableLike[L, A, Repr] with GenSeqLike[L, A, Repr] with Parallelizable[A, ParSeq[A]] { self =>
 
   type LT
 
-  override protected[this] def thisCollection: Seq[A] = this.asInstanceOf[Seq[A]]
-  override protected[this] def toCollection(repr: Repr): Seq[A] = repr.asInstanceOf[Seq[A]]
+  override protected[this] def thisCollection: Seq[L, A] = this.asInstanceOf[Seq[L, A]]
+  override protected[this] def toCollection(repr: Repr): Seq[L, A] = repr.asInstanceOf[Seq[L, A]]
 
   def length: Int
 
@@ -302,7 +302,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    */
   def reverseIterator: Iterator[A] = toCollection(reverse).iterator
 
-  def startsWith[B](that: GenSeq[B], offset: Int): Boolean = {
+  def startsWith[B](that: GenSeq[L, B], offset: Int): Boolean = {
     val i = this.iterator drop offset
     val j = that.iterator
     while (j.hasNext && i.hasNext)
@@ -312,7 +312,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
     !j.hasNext
   }
 
-  def endsWith[B](that: GenSeq[B]): Boolean = {
+  def endsWith[B](that: GenSeq[L, B]): Boolean = {
     val i = this.iterator.drop(length - that.length)
     val j = that.iterator
     while (i.hasNext && j.hasNext)
@@ -328,7 +328,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @return  the first index such that the elements of this $coll starting at this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists.
    */
-  def indexOfSlice[B >: A](that: GenSeq[B]): Int = indexOfSlice(that, 0)
+  def indexOfSlice[B >: A](that: GenSeq[L, B]): Int = indexOfSlice(that, 0)
 
   /** Finds first index after or at a start index where this $coll contains a given sequence as a slice.
    *  $mayNotTerminateInf
@@ -337,7 +337,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @return  the first index `>= from` such that the elements of this $coll starting at this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists.
    */
-  def indexOfSlice[B >: A](that: GenSeq[B], from: Int): Int =
+  def indexOfSlice[B >: A](that: GenSeq[L, B], from: Int): Int =
     if (this.hasDefiniteSize && that.hasDefiniteSize) {
       val l = length
       val tl = that.length
@@ -349,7 +349,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
     }
     else {
       var i = from
-      var s: Seq[A] = thisCollection drop i
+      var s: Seq[L, A] = thisCollection drop i
       while (!s.isEmpty) {
         if (s startsWith that)
           return i
@@ -366,7 +366,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @return  the last index such that the elements of this $coll starting a this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists.
    */
-  def lastIndexOfSlice[B >: A](that: GenSeq[B]): Int = lastIndexOfSlice(that, length)
+  def lastIndexOfSlice[B >: A](that: GenSeq[L, B]): Int = lastIndexOfSlice(that, length)
 
   /** Finds last index before or at a given end index where this $coll contains a given sequence as a slice.
    *  @param  that    the sequence to test
@@ -374,7 +374,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @return  the last index `<= end` such that the elements of this $coll starting at this index
    *           match the elements of sequence `that`, or `-1` of no such subsequence exists.
    */
-  def lastIndexOfSlice[B >: A](that: GenSeq[B], end: Int): Int = {
+  def lastIndexOfSlice[B >: A](that: GenSeq[L, B], end: Int): Int = {
     val l = length
     val tl = that.length
     val clippedL = math.min(l-tl, end)
@@ -391,7 +391,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @return  `true` if this $coll contains a slice with the same elements
    *           as `that`, otherwise `false`.
    */
-  def containsSlice[B](that: GenSeq[B]): Boolean = indexOfSlice(that) != -1
+  def containsSlice[B](that: GenSeq[L, B]): Boolean = indexOfSlice(that) != -1
 
   /** Tests whether this $coll contains a given value as an element.
    *  $mayNotTerminateInf
@@ -411,7 +411,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *  @param bf     $bfinfo
    *  @return       a new collection of type `That` which contains all elements of this $coll
    *                followed by all elements of `that`.
-   *  @usecase def union(that: Seq[A]): $Coll[A]
+   *  @usecase def union(that: Seq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    Another way to express this
@@ -423,7 +423,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *    @return       a new $coll which contains all elements of this $coll
    *                  followed by all elements of `that`.
    */
-  override def union[B >: A, That](that: GenSeq[B])(implicit bf: CanBuildFrom[Repr, B, That]): That =
+  override def union[B >: A, That](that: GenSeq[L, B])(implicit bf: CanBuildFrom[Repr, B, That]): That =
     this ++ that
 
   /** Computes the multiset difference between this $coll and another sequence.
@@ -435,7 +435,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                part of the result, but any following occurrences will.
-   *  @usecase def diff(that: Seq[A]): $Coll[A]
+   *  @usecase def diff(that: Seq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    $willNotTerminateInf
@@ -446,7 +446,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *                  ''n'' times in `that`, then the first ''n'' occurrences of `x` will not form
    *                  part of the result, but any following occurrences will.
    */
-  def diff[B >: A](that: GenSeq[B]): Repr = {
+  def diff[B >: A](that: GenSeq[L, B]): Repr = {
     val occ = occCounts(that.seq)
     val b = newBuilder
     for (x <- this) {
@@ -466,7 +466,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *                If an element value `x` appears
    *                ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                in the result, but any following occurrences will be omitted.
-   *  @usecase def intersect(that: Seq[A]): $Coll[A]
+   *  @usecase def intersect(that: Seq[L, A]): $Coll[A]
    *    @inheritdoc
    *
    *    $mayNotTerminateInf
@@ -477,7 +477,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *                  ''n'' times in `that`, then the first ''n'' occurrences of `x` will be retained
    *                  in the result, but any following occurrences will be omitted.
    */
-  def intersect[B >: A](that: GenSeq[B]): Repr = {
+  def intersect[B >: A](that: GenSeq[L, B]): Repr = {
     val occ = occCounts(that.seq)
     val b = newBuilder
     for (x <- this) {
@@ -490,7 +490,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
     b.result()
   }
 
-  private def occCounts[B](sq: Seq[B]): mutable.Map[B, Int] = {
+  private def occCounts[B](sq: Seq[L, B]): mutable.Map[B, Int] = {
     val occ = new mutable.HashMap[B, Int] { override def default(k: B) = 0 }
     for (y <- sq) occ(y) += 1
     occ
@@ -513,7 +513,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
     b.result()
   }
 
-  def patch[B >: A, That](from: Int, patch: GenSeq[B], replaced: Int)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
+  def patch[B >: A, That](from: Int, patch: GenSeq[L, B], replaced: Int)(implicit bf: CanBuildFrom[Repr, B, That]): That = {
     val b = bf(repr)
     var i = 0
     val it = this.iterator
@@ -574,7 +574,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
     b.result()
   }
 
-  def corresponds[B](that: GenSeq[B])(p: (A,B) => Boolean): Boolean = {
+  def corresponds[B](that: GenSeq[L, B])(p: (A,B) => Boolean): Boolean = {
     val i = this.iterator
     val j = that.iterator
     while (i.hasNext && j.hasNext)
@@ -662,7 +662,7 @@ trait SeqLike[+A, +Repr] extends Any with IterableLike[A, Repr] with GenSeqLike[
    *
    *  A new collection will not be built; in particular, lazy sequences will stay lazy.
    */
-  override def toSeq: Seq[A] = thisCollection
+  override def toSeq: Seq[L, A] = thisCollection
 
   /** Produces the range of all indices of this sequence.
    *
@@ -698,22 +698,22 @@ object SeqLike {
    *  @param  n1   The far end of the target sequence that we should use (exclusive)
    *  @return Target packed in an IndexedSeq (taken from iterator unless W already is an IndexedSeq)
    */
-  private def kmpOptimizeWord[B](W: Seq[B], n0: Int, n1: Int, forward: Boolean) = W match {
+  private def kmpOptimizeWord[B](W: Seq[Any, B], n0: Int, n1: Int, forward: Boolean) = W match {
     case iso: IndexedSeq[_] =>
       // Already optimized for indexing--use original (or custom view of original)
       if (forward && n0==0 && n1==W.length) iso.asInstanceOf[IndexedSeq[B]]
-      else if (forward) new AbstractSeq[B] with IndexedSeq[B] {
+      else if (forward) new AbstractSeq[Any, B] with IndexedSeq[B] {
         val length = n1 - n0
         def apply(x: Int) = iso(n0 + x).asInstanceOf[B]
       }
-      else new AbstractSeq[B] with IndexedSeq[B] {
+      else new AbstractSeq[Any, B] with IndexedSeq[B] {
         def length = n1 - n0
         def apply(x: Int) = iso(n1 - 1 - x).asInstanceOf[B]
       }
     case _ =>
       // W is probably bad at indexing.  Pack in array (in correct orientation)
       // Would be marginally faster to special-case each direction
-      new AbstractSeq[B] with IndexedSeq[B] {
+      new AbstractSeq[Any, B] with IndexedSeq[B] {
         private[this] val Warr = new Array[AnyRef](n1-n0)
         private[this] val delta = if (forward) 1 else -1
         private[this] val done = if (forward) n1-n0 else -1
@@ -774,7 +774,7 @@ object SeqLike {
    *  @param  forward Direction of search (from beginning==true, from end==false)
    *  @return Index of start of sequence if found, -1 if not (relative to beginning of S, not m0).
    */
-  private def kmpSearch[B](S: Seq[B], m0: Int, m1: Int, W: Seq[B], n0: Int, n1: Int, forward: Boolean): Int = {
+  private def kmpSearch[B](S: Seq[Any, B], m0: Int, m1: Int, W: Seq[Any, B], n0: Int, n1: Int, forward: Boolean): Int = {
     // Check for redundant case when target has single valid element
     def clipR(x: Int, y: Int) = if (x < y) x else -1
     def clipL(x: Int, y: Int) = if (x > y) x else -1
@@ -869,8 +869,8 @@ object SeqLike {
    *  @return the applicable index in source where target exists, or -1 if not found
    */
   def indexOf[B](
-    source: Seq[B], sourceOffset: Int, sourceCount: Int,
-    target: Seq[B], targetOffset: Int, targetCount: Int,
+    source: Seq[Any, B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[Any, B], targetOffset: Int, targetCount: Int,
     fromIndex: Int
   ): Int = {
     // Fiddle with variables to match previous behavior and use kmpSearch
@@ -900,8 +900,8 @@ object SeqLike {
    *  @see  [[scala.collection.SeqLike]], method `indexOf`
    */
   def lastIndexOf[B](
-    source: Seq[B], sourceOffset: Int, sourceCount: Int,
-    target: Seq[B], targetOffset: Int, targetCount: Int,
+    source: Seq[Any, B], sourceOffset: Int, sourceCount: Int,
+    target: Seq[Any, B], targetOffset: Int, targetCount: Int,
     fromIndex: Int
   ): Int = {
     // Fiddle with variables to match previous behavior and use kmpSearch

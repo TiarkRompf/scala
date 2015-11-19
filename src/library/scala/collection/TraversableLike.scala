@@ -79,7 +79,7 @@ trait TraversableLike[+A, +Repr] extends Any
 
   type LT
 
-  //type Repr = Reprs 
+  //type Repr = Reprs
 
   /** The type implementing this traversable */
   protected[this] type Self = Repr
@@ -629,7 +629,7 @@ trait TraversableLike[+A, +Repr] extends Any
 
   @deprecatedOverriding("Enforce contract of toTraversable that if it is Traversable it returns itself.", "2.11.0")
   def toTraversable: Traversable[A] = thisCollection
-  
+
   def toIterator: Iterator[A] = toStream.iterator
   def toStream: Stream[A] = toBuffer.toStream
   // Override to provide size hint.
@@ -710,7 +710,7 @@ trait TraversableLike[+A, +Repr] extends Any
 
     // TR not sure about this -- previous version: WithFilter extends FilterMonadic[A, Repr] {
     type LT
-    //type Repr = Reprs 
+    //type Repr = Reprs
 
     /** Builds a new collection by applying a function to all elements of the
      *  outer $coll containing this `WithFilter` instance that satisfy predicate `p`.

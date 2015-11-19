@@ -336,10 +336,10 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * {{{
    *      scala> val a = List(1,2,3,4)
    *      a: List[Int] = List(1, 2, 3, 4)
-   *      
+   *
    *      scala> val b = new StringBuilder()
-   *      b: StringBuilder = 
-   *      
+   *      b: StringBuilder =
+   *
    *      scala> a.addString(b , "List(" , ", " , ")")
    *      res5: StringBuilder = List(1, 2, 3, 4)
    * }}}
@@ -378,7 +378,7 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * {{{
    *      scala> val a = List(1,2,3,4)
    *      a: List[Int] = List(1, 2, 3, 4)
-   *      
+   *
    *      scala> val b = new StringBuilder()
    *      b: StringBuilder =
    *
@@ -401,7 +401,7 @@ trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
    * {{{
    *      scala> val a = List(1,2,3,4)
    *      a: List[Int] = List(1, 2, 3, 4)
-   *      
+   *
    *      scala> val b = new StringBuilder()
    *      b: StringBuilder =
    *

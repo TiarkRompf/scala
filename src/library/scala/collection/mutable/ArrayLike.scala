@@ -10,7 +10,7 @@ package scala
 package collection
 package mutable
 
-/** A common supertrait of `ArrayOps` and `WrappedArray` that factors out the 
+/** A common supertrait of `ArrayOps` and `WrappedArray` that factors out the
  * `deep` method for arrays and wrapped arrays and serves as a marker trait
  * for array wrappers.
  *
@@ -24,7 +24,7 @@ package mutable
 trait ArrayLike[A, +Repr] extends Any with IndexedSeqOptimized[A, Repr] { self =>
 
   type LT
-  //type Repr = Reprs 
+  //type Repr = Reprs
 
   /** Creates a possible nested `IndexedSeq` which consists of all the elements
    *  of this array. If the elements are arrays themselves, the `deep` transformation

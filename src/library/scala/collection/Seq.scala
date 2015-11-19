@@ -22,7 +22,7 @@ trait Seq[+A] extends PartialFunction[Int, A]
                       with SeqLike[A, Seq[A]] { self =>
   override def companion: GenericCompanion[Seq] = Seq
 
-  //type Repr = Seq[A] 
+  //type Repr = Seq[A]
 
   override def seq: Seq[A] = this
 }

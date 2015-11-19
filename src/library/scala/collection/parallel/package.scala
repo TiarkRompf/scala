@@ -98,7 +98,7 @@ package parallel {
       }
     }
   }
-  
+
   trait FactoryOps[From, Elem, To] {
     trait Otherwise[R] {
       def otherwise(notbody: => R): R

@@ -139,7 +139,7 @@ class ListSet[A] extends AbstractSet[A]
   override def stringPrefix = "ListSet"
 
   /** Returns this $coll as an immutable set.
-   *  
+   *
    *  A new set will not be built; lazy collections will stay lazy.
    */
   @deprecatedOverriding("Immutable sets should do nothing on toSet but return themselves cast as a Set.", "2.11.0")

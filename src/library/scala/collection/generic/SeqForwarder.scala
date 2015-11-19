@@ -28,6 +28,7 @@ import scala.collection.immutable.Range
 @deprecated("Forwarding is inherently unreliable since it is not automated and new methods can be forgotten.", "2.11.0")
 trait SeqForwarder[+A] extends Seq[A] with IterableForwarder[A] { self =>
 
+  type LT
   protected override def underlying: Seq[A] { type LT = self.LT }
 
   override def length: Int = underlying.length

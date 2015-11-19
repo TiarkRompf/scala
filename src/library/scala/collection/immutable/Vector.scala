@@ -24,7 +24,7 @@ object Vector extends IndexedSeqFactory[Vector] {
     ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]
   private[immutable] val NIL = new Vector[Nothing](0, 0, 0)
   override def empty[A]: Vector[A] = NIL
-  
+
   // Constants governing concat strategy for performance
   private final val Log2ConcatFaster = 5
   private final val TinyAppendFaster = 2
@@ -135,7 +135,7 @@ override def companion: GenericCompanion[Vector] = Vector
   // If we have a default builder, there are faster ways to perform some operations
   @inline private[this] def isDefaultCBF[A, B, That](bf: CanBuildFrom[Vector[A], B, That]): Boolean =
     (bf eq IndexedSeq.ReusableCBF) || (bf eq collection.immutable.Seq.ReusableCBF) || (bf eq collection.Seq.ReusableCBF)
-    
+
   // SeqLike api
 
   override def updated[B >: A, That](index: Int, elem: B)(implicit bf: CanBuildFrom[Vector[A], B, That]): That =
@@ -225,7 +225,7 @@ override def companion: GenericCompanion[Vector] = Vector
         val again = if (!that.isTraversableAgain) that.toVector else that.seq
         again.size match {
           // Often it's better to append small numbers of elements (or prepend if RHS is a vector)
-          case n if n <= TinyAppendFaster || n < (this.size >> Log2ConcatFaster) => 
+          case n if n <= TinyAppendFaster || n < (this.size >> Log2ConcatFaster) =>
             var v: Vector[B] = this
             for (x <- again) v = v :+ x
             v.asInstanceOf[That]

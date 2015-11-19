@@ -887,7 +887,7 @@ extends scala.collection.concurrent.Map[K, V]
    *
    *  If the specified mapping function throws an exception,
    *  that exception is rethrown.
-   *  
+   *
    *  Note: This method will invoke op at most once.
    *  However, `op` may be invoked without the result being added to the map if
    *  a concurrent process is also trying to add a value corresponding to the

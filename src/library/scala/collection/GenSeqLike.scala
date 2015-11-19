@@ -35,7 +35,7 @@ trait GenSeqLike[+A, +Repr] extends Any with GenIterableLike[A, Repr] with Equal
   type LT
   //type plocal = local[LT]
 
-  ////type Repr = Reprs 
+  ////type Repr = Reprs
 
   def seq: Seq[A]
 
